@@ -49,14 +49,14 @@ class VideoComm:
         """
         try:
             # Compress frame as JPEG
-            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 15])
             if not ret:
                 return
             frame_bytes = buffer.tobytes()
-
+            print(f"Sending frame of size {len(frame_bytes)} bytes")
             # Encrypt
             encrypted = self.AES.encrypt_file(frame_bytes)
-
+            print(f"Encrypted frame of size {len(encrypted)} bytes")
             # Send to all users
             for user in self.users:
                 self.udp_socket.sendto(encrypted, user)
@@ -99,7 +99,7 @@ def main():
     client = VideoComm(5001, key, users=[])
 
     # Connect them
-    server.add_user("127.0.0.1", 5001)
+    server.add_user("10.0.0.5", 5001)
     client.add_user("10.0.0.26", 5000)
 
     print("Video communication started. Press 'q' to quit.")
