@@ -1,46 +1,46 @@
-import pyaudio
+import sounddevice as sd
+import numpy as np
+
 
 class AudioOutput:
-    def __init__(self, rate=44100, channels=2, format=pyaudio.paInt16, device_index=None):
+    def __init__(self, rate=44100, channels=2, device_index=None):
         """
-        אתחול התקן הפלט.
-        :param rate: קצב דגימה (למשל 44100Hz)
-        :param channels: מספר ערוצים (1 למונו, 2 לסטריאו)
-        :param device_index: ID של ההתקן (רמקול/אוזניות). אם None, ישתמש בברירת המחדל.
+        Initialize output device.
+        :param rate: Sample rate (e.g. 44100Hz)
+        :param channels: Number of channels (1 = mono, 2 = stereo)
+        :param device_index: Output device ID (None = default)
         """
-        self.p = pyaudio.PyAudio()
-        self.stream = self.p.open(
-            format=format,
-            channels=channels,
-            rate=rate,
-            output=True,
-            output_device_index=device_index
+        self.rate = rate
+        self.channels = channels
+        self.device_index = device_index
+
+        self.stream = sd.OutputStream(
+            samplerate=self.rate,
+            channels=self.channels,
+            dtype='int16',
+            device=self.device_index
         )
+        self.stream.start()
 
     def play_bytes(self, audio_bytes):
-        """ מקבל bytes ומזרים אותם לרמקול/אוזניות """
-        if self.stream.is_active():
-            self.stream.write(audio_bytes)
+        """Play raw int16 bytes"""
+        if self.stream:
+            audio_data = np.frombuffer(audio_bytes, dtype=np.int16)
+
+            # Reshape if stereo
+            if self.channels > 1:
+                audio_data = audio_data.reshape(-1, self.channels)
+
+            self.stream.write(audio_data)
 
     def stop(self):
-        """ סגירת הזרם ושחרור משאבים """
-        self.stream.stop_stream()
-        self.stream.close()
-        self.p.terminate()
+        """Close stream and release resources"""
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
 
     @staticmethod
     def list_devices():
-        """ פונקציית עזר להצגת כל המכשירים המחוברים וה-ID שלהם """
-        p = pyaudio.PyAudio()
-        for i in range(p.get_device_count()):
-            info = p.get_device_info_by_index(i)
-            print(f"ID {i}: {info['name']}")
-        p.terminate()
-
-# --- דוגמת שימוש ---
-# 1. מצא את ה-ID של האוזניות/רמקולים שלך
-# AudioOutput.list_devices()
-
-# 2. צור מופע (למשל לאוזניות ב-ID 2)
-# headphone = AudioOutput(device_index=2)
-# headphone.play_bytes(some_byte_data)
+        """List all available audio devices"""
+        print(sd.query_devices())
