@@ -51,9 +51,9 @@ class VideoComm:
         """
         try:
             # Resize frame to reduce size
-            frame = cv2.resize(frame, (320, 240))
+            frame = cv2.resize(frame, (478, 359))
             # Compress frame as JPEG
-            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 15])
+            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             if not ret:
                 return
             frame_bytes = buffer.tobytes()
@@ -99,7 +99,7 @@ def main():
     key = "testkey123"
     port = 5001
     remote_port = 5000
-    remote_ip = "192.168.4.73"
+    remote_ip = "192.168.4.74"
 
     # Create video communication system
     video_comm = VideoComm(port, key, users=[])
@@ -114,7 +114,7 @@ def main():
     print("Video communication started. Press 'q' to quit.")
 
     # Initialize CameraControl to handle camera
-    cam = CameraControl(width=160, height=120)
+    cam = CameraControl(width=478, height=359)
     cam.start()
     recv_frame = None
     addr = None
