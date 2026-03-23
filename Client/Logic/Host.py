@@ -13,6 +13,8 @@ from MatMeet.Client.GUI.VideoDisplay    import VideoDisplay
 from MatMeet.Client.Protocol            import clientProtocol
 # TODO note this is a problem!
 from MatMeet.Client.Comms.ClientServerComm import ClientServer
+from MatMeet.Common.Cipher import AESCipher
+
 
 # current problems:
 # using server code in the client - should add a common server code
@@ -194,7 +196,7 @@ class Host:
             del self.open_clients[ip]
 
 
-    def handle_join(self, ip, username):
+    def handle_join(self, ip, port, shared_key):
         """
         Connect a client to the call or server.
 
@@ -203,12 +205,4 @@ class Host:
         """
         pass  # Logic to connect the client
         self.host_comm.connect_client(ip, username)
-        self.open_clients[ip] = username
-
-
-
-
-
-
-
-
+        self.open_clients[ip] = [AESCipher(shared_key), port]
