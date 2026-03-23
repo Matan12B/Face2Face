@@ -8,14 +8,13 @@ import os
 import cv2
 
 # my imports
-from Client.Comms.videoComm import VideoComm
-from Client.Comms.audioComm import AudioClient
-from Client.GUI.VideoDisplay import VideoDisplay
-from Client.Devices.Camera import CameraControl
-from Client.Devices.AudioOutputDevice import AudioOutput
-
-from Client.Devices.Microphone import Microphone
-from Client.Protocol import clientProtocol
+from MatMeet.Client.Comms.videoComm import VideoComm
+from MatMeet.Client.Comms.audioComm import AudioClient
+from MatMeet.Client.GUI.VideoDisplay import VideoDisplay
+from MatMeet.Client.Devices.Camera import CameraControl
+from MatMeet.Client.Devices.AudioOutputDevice import AudioOutput
+from MatMeet.Client.Devices.Microphone import Microphone
+from MatMeet.Client.Protocol import clientProtocol
 
 class CallLogic:
     # todo video port audio port

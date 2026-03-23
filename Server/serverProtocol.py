@@ -10,7 +10,8 @@ def build_login_status(status):
     """
     Return a message of the status of the login in the protocol structure
     """
-    return status
+    # todo add opcode
+    return f"{status}"
 
 def build_register_status(status):
     """

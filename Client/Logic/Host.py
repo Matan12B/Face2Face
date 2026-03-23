@@ -5,14 +5,14 @@ import sys
 import os
 import cv2
 import queue
-from Client.Devices.Camera      import CameraControl
-from Client.Devices.Microphone  import Microphone
-from Client.Comms.videoComm     import VideoComm
-from Client.Comms.audioComm     import AudioServer
-from Client.GUI.VideoDisplay    import VideoDisplay
-from Client.Protocol            import clientProtocol
+from MatMeet.Client.Devices.Camera      import CameraControl
+from MatMeet.Client.Devices.Microphone  import Microphone
+from MatMeet.Client.Comms.videoComm     import VideoComm
+from MatMeet.Client.Comms.audioComm     import AudioServer
+from MatMeet.Client.GUI.VideoDisplay    import VideoDisplay
+from MatMeet.Client.Protocol            import clientProtocol
 # TODO note this is a problem!
-from Client.Comms.ClientServerComm import ClientServer
+from MatMeet.Client.Comms.ClientServerComm import ClientServer
 
 # current problems:
 # using server code in the client - should add a common server code
