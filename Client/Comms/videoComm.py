@@ -8,7 +8,7 @@ from MatMeet.Common.Cipher import AESCipher
 
 
 class VideoComm:
-    def __init__(self, port, key_string, users={}):
+    def __init__(self, port, key_string, users=[]):
         """
         Video communication over UDP with AES encryption and JPEG compression.
         :param port: Local UDP port to bind
@@ -19,7 +19,7 @@ class VideoComm:
         self.udp_socket.bind(("0.0.0.0", port))
         self.AES = AESCipher(key_string)
         self.frameQ = queue.Queue()
-        self.users = users if users else {}
+        self.users = users if users else []
         self.running = True
         self.MAX_PACKET_SIZE = 65507  # max UDP datagram size
         threading.Thread(target=self._receive_frames, daemon=True).start()
@@ -99,7 +99,7 @@ def main():
 
     # Get remote IP from user
     # remote_ip = input("Enter remote machine IP (or press Enter to skip): ").strip()
-    remote_ip = "10.0.0.26"
+    remote_ip = "192.168.4.74"
     # Create video comm
     video_comm = VideoComm(port, key, users=[])
 
