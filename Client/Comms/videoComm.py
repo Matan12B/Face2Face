@@ -8,7 +8,7 @@ from MatMeet.Common.Cipher import AESCipher
 
 
 class VideoComm:
-    def __init__(self, port, key_string, users={}):
+    def __init__(self, port, key_string, users=[]):
         """
         Video communication over UDP with AES encryption and JPEG compression.
         :param port: Local UDP port to bind
@@ -19,7 +19,7 @@ class VideoComm:
         self.udp_socket.bind(("0.0.0.0", port))
         self.AES = AESCipher(key_string)
         self.frameQ = queue.Queue()
-        self.users = users if users else {}
+        self.users = users if users else []
         self.running = True
         self.MAX_PACKET_SIZE = 65507  # max UDP datagram size
         threading.Thread(target=self._receive_frames, daemon=True).start()
@@ -96,17 +96,17 @@ class VideoComm:
 def main():
     key = "testkey123"
     port = 5000
-
+    remote_port = 5001
     # Get remote IP from user
     # remote_ip = input("Enter remote machine IP (or press Enter to skip): ").strip()
-    remote_ip = "192.168.4.73"
+    remote_ip = "192.168.4.74"
     # Create video comm
     video_comm = VideoComm(port, key, users=[])
 
     # Add remote user if provided
     if remote_ip:
-        video_comm.add_user(remote_ip, port)
-        print(f"Connected to {remote_ip}:{port}")
+        video_comm.add_user(remote_ip, remote_port)
+        print(f"Connected to {remote_ip}:{remote_port}")
     else:
         print("No remote IP provided. Waiting for incoming connections...")
 
@@ -116,7 +116,8 @@ def main():
     cap = cv2.VideoCapture(0)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 160)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
-
+    recv_frame = None
+    addr = None
     try:
         while True:
             ret, frame = cap.read()
@@ -127,12 +128,14 @@ def main():
 
             while not video_comm.frameQ.empty():
                 recv_frame, addr = video_comm.frameQ.get()
+
+            if recv_frame is not None:
                 cv2.imshow(f"Received from {addr}", recv_frame)
 
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-            time.sleep(0.02)  # slight delay to reduce CPU
+            time.sleep(0.07)  # slight delay to reduce CPU
 
     except KeyboardInterrupt:
         print("Shutting down...")
