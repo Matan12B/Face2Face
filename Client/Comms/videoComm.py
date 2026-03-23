@@ -4,7 +4,9 @@ import queue
 import time
 import cv2
 import numpy as np
+import pickle
 from MatMeet.Common.Cipher import AESCipher
+from MatMeet.Client.Devices.Camera import CameraControl
 
 
 class VideoComm:
@@ -32,7 +34,6 @@ class VideoComm:
             try:
                 data, addr = self.udp_socket.recvfrom(self.MAX_PACKET_SIZE)
                 decrypted_data = self.AES.decrypt_file(data)
-                print(decrypted_data)
                 # Decode JPEG bytes back to NumPy array
                 np_arr = np.frombuffer(decrypted_data, np.uint8)
                 frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
@@ -97,39 +98,49 @@ class VideoComm:
 def main():
     key = "testkey123"
     port = 5001
-
-    # Get remote IP from user
-    # remote_ip = input("Enter remote machine IP (or press Enter to skip): ").strip()
+    remote_port = 5000
     remote_ip = "192.168.4.74"
-    # Create video comm
+
+    # Create video communication system
     video_comm = VideoComm(port, key, users=[])
 
     # Add remote user if provided
     if remote_ip:
-        video_comm.add_user(remote_ip, 5000)
-        print(f"Connected to {remote_ip}:{port}")
+        video_comm.add_user(remote_ip, remote_port)
+        print(f"Connected to {remote_ip}:{remote_port}")
     else:
         print("No remote IP provided. Waiting for incoming connections...")
 
     print("Video communication started. Press 'q' to quit.")
 
-    # Open local camera
-    cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 160)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 120)
+    # Initialize CameraControl to handle camera
+    cam = CameraControl(width=160, height=120)
+    cam.start()
 
     try:
         while True:
-            ret, frame = cap.read()
+            # Get the latest frame from the CameraControl
+            frame_data = cam.get_frame()
 
-            if ret:
-                video_comm.send_frame(frame)
-                cv2.imshow("My Camera", frame)
+            if frame_data is not None:
+                # Decode the frame (since it's a pickled byte stream)
+                encoded_frame = pickle.loads(frame_data)
+                # Decode back to a NumPy array (BGR frame)
+                frame = cv2.imdecode(encoded_frame, cv2.IMREAD_COLOR)
 
+                if frame is not None:
+                    # Send the captured frame
+                    video_comm.send_frame(frame)
+                    # Show the captured frame on local window
+                    cv2.imshow("My Camera", frame)
+
+            # Display received frames from other users
             while not video_comm.frameQ.empty():
                 recv_frame, addr = video_comm.frameQ.get()
-                cv2.imshow(f"Received from {addr}", recv_frame)
+                if recv_frame is not None:
+                    cv2.imshow(f"Received from {addr}", recv_frame)
 
+            # Exit condition
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
@@ -139,7 +150,8 @@ def main():
         print("Shutting down...")
 
     finally:
-        cap.release()
+        # Release camera and close windows
+        cam.stop()
         cv2.destroyAllWindows()
         video_comm.close()
 
