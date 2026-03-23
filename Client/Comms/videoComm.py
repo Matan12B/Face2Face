@@ -32,6 +32,7 @@ class VideoComm:
             try:
                 data, addr = self.udp_socket.recvfrom(self.MAX_PACKET_SIZE)
                 decrypted_data = self.AES.decrypt_file(data)
+                print(decrypted_data)
                 # Decode JPEG bytes back to NumPy array
                 np_arr = np.frombuffer(decrypted_data, np.uint8)
                 frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
@@ -95,7 +96,7 @@ class VideoComm:
 
 def main():
     key = "testkey123"
-    port = 5000
+    port = 5001
 
     # Get remote IP from user
     # remote_ip = input("Enter remote machine IP (or press Enter to skip): ").strip()
@@ -105,7 +106,7 @@ def main():
 
     # Add remote user if provided
     if remote_ip:
-        video_comm.add_user(remote_ip, port)
+        video_comm.add_user(remote_ip, 5000)
         print(f"Connected to {remote_ip}:{port}")
     else:
         print("No remote IP provided. Waiting for incoming connections...")
@@ -132,7 +133,7 @@ def main():
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
 
-            time.sleep(0.02)  # slight delay to reduce CPU
+            time.sleep(0.07)  # slight delay to reduce CPU
 
     except KeyboardInterrupt:
         print("Shutting down...")
