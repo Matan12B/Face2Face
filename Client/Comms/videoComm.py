@@ -99,7 +99,7 @@ def main():
 
     # Get remote IP from user
     # remote_ip = input("Enter remote machine IP (or press Enter to skip): ").strip()
-    remote_ip = "10.0.0.26"
+    remote_ip = "192.168.4.73"
     # Create video comm
     video_comm = VideoComm(port, key, users=[])
 
