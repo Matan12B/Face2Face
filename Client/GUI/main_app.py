@@ -1,7 +1,6 @@
 import wx
 from home_frame import HomeFrame
 from MatMeet.Client.Logic.clientLogic import Client
-
 class ZoomApp(wx.App):
 
     def OnInit(self):
