@@ -52,11 +52,10 @@ class VideoComm:
         try:
             # Encrypt
             encrypted = self.AES.encrypt_file(frame_bytes)
-
             # Send to all users
+            print(self.users.items())
             for ip, port in self.users.items():
                 self.udp_socket.sendto(encrypted, (ip, port))
-
         except Exception as e:
             print("Send error:", e)
 

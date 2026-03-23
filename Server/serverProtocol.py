@@ -31,7 +31,7 @@ def build_audio_msg(audio_data):
     """
     return f"ha^#^{audio_data}"
 
-def build_give_role(role,meeting_port, shared_key):
+def build_give_role(role, meeting_port, shared_key):
     """
     give the client a role
     """

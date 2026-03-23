@@ -102,25 +102,27 @@ class Server:
         self.comm.send_msg(ip, msg)
 
     def join_meeting(self, ip, data):
-        """
-        Add client to an existing meeting
-        :param ip: Client IP address
-        :param data: meeting_id
-        """
         meeting_id = data
         if meeting_id in self.meetings:
-            shared_key = self.meetings[meeting_id][0]
-            self.meetings[meeting_id][1].append(ip)
+            meeting_port = self.meetings[meeting_id][0]  # int
+            shared_key = self.meetings[meeting_id][1]  # str
+            self.meetings[meeting_id][2].append(ip)  # append to client IP list
+
             if ip in self.open_clients:
                 self.open_clients[ip][1] = meeting_id
-            # Get other clients in the meeting
-            other_clients = [client for client in self.meetings[meeting_id][1] if client != ip]
+
+            # Get other clients
+            other_clients = [client for client in self.meetings[meeting_id][2] if client != ip]
+
             print(f"Client {ip} joined meeting {meeting_id}")
-            # Send success message with meeting info
-            msg = serverProtocol.build_give_role("guest", shared_key)
+
+            # Send success message to new client
+            msg = serverProtocol.build_give_role("guest", meeting_port, shared_key)
             self.comm.send_msg(ip, msg)
+
+            # Notify other clients
             for client_ip in other_clients:
-                notify_msg = serverProtocol.build_client_joined(ip)
+                notify_msg = serverProtocol.build_client_joined(ip, meeting_port, shared_key)
                 self.comm.send_msg(client_ip, notify_msg)
         else:
             print(f"Meeting {meeting_id} not found for client {ip}")
