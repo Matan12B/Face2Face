@@ -62,6 +62,7 @@ class HomeFrame(wx.Frame):
         while self.client.role is None:
             time.sleep(0.02)
             continue
+        print("role recvd", self.client.role)
         if self.client.role:
             call = CallFrame(self.client.role)
             call.Show()

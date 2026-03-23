@@ -44,7 +44,7 @@ class CallLogic:
         # Buffers for received audio/video
         self.sync_buffer = {}
         self.running = True
-
+        print("call logic created")
     def start(self):
         """Main loop: start devices, handle communication, send audio/video."""
         print("Starting call...")

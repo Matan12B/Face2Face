@@ -84,12 +84,12 @@ class Client:
         role = data[0]
         port = int(data[1])
         meeting_key = data[2]
+        print("giving role", data[0])
+
         if role == "host":
             self.role = Host(port, meeting_key, self.comm)
         elif role == "guest":
-            if len(data) == 5:
-                audio_ip = data[4]
-                self.role = CallLogic(port, meeting_key, self.comm)
+            self.role = CallLogic(port, meeting_key, self.comm, self.ip)
         else:
             print("Invalid role")
 
