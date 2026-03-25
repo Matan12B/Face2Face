@@ -9,7 +9,7 @@ from Client.Devices.Camera import CameraControl
 
 
 class VideoComm:
-    def __init__(self, port, AES, open_clients):
+    def __init__(self, AES, open_clients):
         """
         Video communication over UDP with AES encryption and JPEG compression.
         :param port: Local UDP port to bind
@@ -17,7 +17,8 @@ class VideoComm:
         :param open_clients: list of (ip, port) tuples
         """
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.udp_socket.bind(("0.0.0.0", port))
+        self.port = 5000 # todo pull from settings file
+        self.udp_socket.bind(("0.0.0.0", self.port))
         self.AES = AES
         self.frameQ = queue.Queue()
         self.open_clients = open_clients
@@ -32,7 +33,7 @@ class VideoComm:
         while self.running:
             try:
                 data, addr = self.udp_socket.recvfrom(self.MAX_PACKET_SIZE)
-                print(len(data), addr)
+                print("recvd frame:",len(data), addr)
                 decrypted_data = self.AES.decrypt_file(data)
                 # Decode JPEG bytes back to NumPy array
                 np_arr = np.frombuffer(decrypted_data, np.uint8)
@@ -49,6 +50,7 @@ class VideoComm:
         Send a pre-encoded JPEG frame to all open_clients.
         :param frame_bytes: JPEG bytes (already resized and encoded)
         """
+        print("Sending frame...")
         try:
             encrypted = self.AES.encrypt_file(frame_bytes)
             for ip, data in self.open_clients.items():

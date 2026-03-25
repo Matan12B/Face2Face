@@ -22,6 +22,12 @@ from Common.Cipher import AESCipher
 
 class Host:
     def __init__(self, port, meeting_key, comm):
+        """
+
+        :param port:
+        :param meeting_key:
+        :param comm:
+        """
         self.open_clients = {} # [ip] = port
         self.microphone = None
         self.soc = socket.socket()
@@ -31,8 +37,8 @@ class Host:
         self.host_server = ClientServer(port, self.msgQ, self.open_clients)
         # todo add port to audio and video comm
         self.AES = AESCipher(meeting_key)
-        self.audio_comm = AudioServer(port, self.AES, self.open_clients)
-        self.video_comm = VideoComm(port, self.AES, self.open_clients)
+        self.audio_comm = AudioServer(self.AES, self.open_clients)
+        self.video_comm = VideoComm(self.AES, self.open_clients)
         # for getting the current user ip
         hostname = socket.gethostname()
         self.ip = socket.gethostbyname(hostname)
@@ -121,15 +127,15 @@ class Host:
     #                     del self.sync_buffer[client][timestamp]
     #         time.sleep(0.01)
 
-    def send_video(self, username, img):
+    def send_video(self, username, frame):
         """
         Send video (image) to a specific user.
 
         :param username: The username of the target client.
-        :param img: The image (video frame) to send to the user.
+        :param frame: The image (video frame) to send to the user.
         """
-        if img:
-            self.video_comm.send_frame(img)
+        if frame:
+            self.video_comm.send_frame(frame)
 
     def send_audio(self, username, audio, timestamp):
         """
@@ -160,14 +166,14 @@ class Host:
         self.sync_buffer[client_ip][timestamp]["audio"] = audio
 
 
-    def handle_video(self, client_ip, username, timestamp, img):
+    def handle_video(self, client_ip, username, timestamp, frame):
         """
         Handle video data received from clients.
 
         :param client_ip: The IP address of the client sending the video.
         :param username: The username of the client sending the video.
         :param timestamp: The timestamp of the video message.
-        :param img: The image (video frame) received from the client.
+        :param frame: The image (video frame) received from the client.
         """
         print("video from", username, timestamp)
         key = f"{client_ip}"
@@ -181,7 +187,7 @@ class Host:
         if timestamp not in self.sync_buffer[key]:
             self.sync_buffer[key][timestamp] = {"audio": None, "video": None}
 
-        self.sync_buffer[key][timestamp]["video"] = img
+        self.sync_buffer[key][timestamp]["video"] = frame
 
     def handle_disconnect(self, ip, username):
         """
