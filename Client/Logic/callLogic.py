@@ -27,8 +27,9 @@ class CallLogic:
         self.call_comm = comm
         self.audio_comm = AudioClient(audio_server_ip, port)
         self.video_comm = VideoComm(port, key, self.open_clients)
-        hostname = socket.gethostname()
-        self.ip = socket.gethostbyname(hostname)
+        # hostname = socket.gethostname()
+        # self.ip = socket.gethostbyname(hostname)
+        self.ip = "10.0.0.5"
         self.commands = {
             "hv": self.handle_video,
             "ha": self.handle_audio,

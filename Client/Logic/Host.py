@@ -22,7 +22,7 @@ from Common.Cipher import AESCipher
 
 class Host:
     def __init__(self, port, meeting_key, comm):
-        self.open_clients = {} # from server
+        self.open_clients = {} # [ip] = port
         self.microphone = None
         self.soc = socket.socket()
         self.msgQ = queue.Queue()
@@ -30,8 +30,9 @@ class Host:
         self.host_comm = comm
         self.host_server = ClientServer(port, self.msgQ, self.open_clients)
         # todo add port to audio and video comm
-        self.audio_comm = AudioServer(port, meeting_key, self.host_comm.open_clients)
-        self.video_comm = VideoComm(port, meeting_key, self.host_comm.open_clients)
+        self.AES = AESCipher(meeting_key)
+        self.audio_comm = AudioServer(port, self.AES, self.open_clients)
+        self.video_comm = VideoComm(port, self.AES, self.open_clients)
         # for getting the current user ip
         hostname = socket.gethostname()
         self.ip = socket.gethostbyname(hostname)
@@ -196,13 +197,13 @@ class Host:
             del self.open_clients[ip]
 
 
-    def handle_join(self, ip, port, shared_key):
+    def handle_join(self, ip, port):
         """
         Connect a client to the call or server.
-
+        :param port: port
         :param ip: The IP address of the client to connect.
-        :param username: The username of the client to connect.
         """
-        pass  # Logic to connect the client
-        self.host_comm.connect_client(ip, username)
-        self.open_clients[ip] = [AESCipher(shared_key), port]
+        self.host_comm.connect_client(ip)
+        # [ip] = socket, port
+        print("adding", ip, "to open clients")
+        self.open_clients[ip] = [None,port]

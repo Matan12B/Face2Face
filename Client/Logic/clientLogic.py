@@ -84,12 +84,13 @@ class Client:
         role = data[0]
         port = int(data[1])
         meeting_key = data[2]
-        host_ip = data[3]
-        print("giving role", data[0])
-
+        if role == "host" and len(data) == 4:
+            host_ip = data[3]
         if role == "host":
             self.role = Host(port, meeting_key, self.comm)
         elif role == "guest":
+            if len(data) != 4:
+                raise ValueError("Invalid guest role data")
             self.role = CallLogic(port, meeting_key, self.comm, host_ip)
         else:
             print("Invalid role")
@@ -102,6 +103,7 @@ class Client:
             msg = self.msgsQ.get()
             print(f"Received message: {msg}")
             opcode, data = clientProtocol.unpack(msg)
+            print(opcode, data)
             if opcode in self.commands:
                 self.commands[opcode](data)
 

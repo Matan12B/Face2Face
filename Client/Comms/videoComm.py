@@ -9,25 +9,25 @@ from Client.Devices.Camera import CameraControl
 
 
 class VideoComm:
-    def __init__(self, port, key_string, users):
+    def __init__(self, port, AES, open_clients):
         """
         Video communication over UDP with AES encryption and JPEG compression.
         :param port: Local UDP port to bind
         :param key_string: AES encryption key
-        :param users: list of (ip, port) tuples
+        :param open_clients: list of (ip, port) tuples
         """
         self.udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.udp_socket.bind(("0.0.0.0", port))
-        self.AES = AESCipher(key_string)
+        self.AES = AES
         self.frameQ = queue.Queue()
-        self.users = users
+        self.open_clients = open_clients
         self.running = True
         self.MAX_PACKET_SIZE = 65507  # max UDP datagram size
         threading.Thread(target=self._receive_frames, daemon=True).start()
 
     def _receive_frames(self):
         """
-        Continuously receive frames from other users.
+        Continuously receive frames from other open_clients.
         """
         while self.running:
             try:
@@ -45,29 +45,29 @@ class VideoComm:
 
     def send_frame(self, frame_bytes):
         """
-        Send a pre-encoded JPEG frame to all users.
+        Send a pre-encoded JPEG frame to all open_clients.
         :param frame_bytes: JPEG bytes (already resized and encoded)
         """
         try:
-            # Encrypt
             encrypted = self.AES.encrypt_file(frame_bytes)
-            for ip, port in self.users.items():
+            for ip, data in self.open_clients.items():
+                port = data[0]
                 self.udp_socket.sendto(encrypted, (ip, port))
         except Exception as e:
-            print("Send error:", e)
+            print("Send error in video comm:", e)
 
     def add_user(self, user_ip, user_port):
         """
         Add a user to broadcast list.
         """
-        self.users[user_ip] = user_port
+        self.open_clients[user_ip][1] = user_port
 
     def remove_user(self, user_ip, user_port):
         """
         Remove user from broadcast list.
         """
-        if user_ip in self.users:
-            del self.users[user_ip]
+        if user_ip in self.open_clients:
+            del self.open_clients[user_ip]
 
     def close(self):
         """
@@ -88,7 +88,7 @@ def main():
     remote_ip = "192.168.4.73"
 
     # Create video communication system
-    video_comm = VideoComm(port, key, users=[])
+    video_comm = VideoComm(port, key, open_clients=[])
 
     # Add remote user if provided
     if remote_ip:
@@ -115,7 +115,7 @@ def main():
                     video_comm.send_frame(frame)
                     cv2.imshow("My Camera", frame)
 
-            # Display received frames from other users
+            # Display received frames from other open_clients
             while not video_comm.frameQ.empty():
                 recv_frame, addr = video_comm.frameQ.get()
 

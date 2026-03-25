@@ -127,12 +127,13 @@ class AudioClient:
 
 
 class AudioServer:
-    def __init__(self, port, audioQ):
+    def __init__(self, port=3000, AES=None, open_clients={}):
         self.server_socket = socket.socket()
         self.port = 3000 # this will be from the settings
-        self.audioQ = audioQ
-        # ip: [soc, AES]
-        self.open_clients= {}
+        self.audio_queue = queue.Queue()
+        # ip: [port]
+        self.AES = AES
+        self.open_clients= open_clients
         # soc: ip
         self.open_clients_soc_ip = {}
         self.server_socket.bind(('0.0.0.0', self.port))
@@ -152,7 +153,13 @@ class AudioServer:
                 if current_socket is self.server_socket:
                     client_socket, addr = self.server_socket.accept()
                     print(f"{addr[0]} connected")
-                    threading.Thread(target=self._exchange_key, args=(client_socket, addr[0],)).start()
+                    while addr[0] not in self.open_clients.keys():
+                        time.sleep(0.01)
+                        continue
+                    self.open_clients[addr[0]][1] = client_socket
+                    # we already have a shared key with this client, so we don't need to exchange keys'
+                    #todo decide if we need to exchange keys or not
+                    # threading.Thread(target=self._exchange_key, args=(client_socket, addr[0],)).start()
                 else:
                     if current_socket in self.open_clients_soc_ip.keys():
                         decrypt_audio_chunk = ""
@@ -164,14 +171,14 @@ class AudioServer:
                                 audio_chunk = current_socket.recv(int(length))
                             else:
                                 self.close_client(current_ip)
-                            if current_ip and current_ip in self.open_clients and audio_chunk:
-                                decrypt_audio_chunk = self.open_clients[current_ip][1].decrypt_file(audio_chunk)
+                            if current_ip and current_ip in self.open_clients and audio_chunk and self.AES:
+                                decrypt_audio_chunk = self.AES.decrypt_file(audio_chunk)
                         except Exception as e:
                             print(f"error in receiving message - {e}")
                             self.close_client(current_ip)
                             continue
                         if decrypt_audio_chunk:
-                            self.audioQ.put([current_ip, decrypt_audio_chunk])
+                            self.audio_queue.put([current_ip, decrypt_audio_chunk])
 
     def _exchange_key(self, client_soc, client_ip):
         """
@@ -244,7 +251,7 @@ class AudioServer:
         """
         if client_soc in self.open_clients_soc_ip.keys():
             client_ip = self._find_ip_by_socket(client_soc)
-            encrypted_audio_chunk = self.open_clients[client_ip][1].encrypt_file(audio_msg)
+            encrypted_audio_chunk = self.AES.encrypt_file(audio_msg)
             try:
                 client_soc.send(str(len(encrypted_audio_chunk)).zfill(8).encode())
                 client_soc.send(encrypted_audio_chunk)
@@ -287,8 +294,8 @@ if __name__ == "__main__":
 
     if mode == "server":
         print("Starting audio server on port 1234...")
-        audioQ = queue.Queue()
-        server = AudioServer(1234, audioQ)
+        audio_queue = queue.Queue()
+        server = AudioServer(1234, audio_queue)
 
         # 🔊 NEW: create local speaker output
         from Client.Devices.AudioOutputDevice import AudioOutput
@@ -299,8 +306,8 @@ if __name__ == "__main__":
         print("Server running. Waiting for clients and audio chunks...")
         try:
             while True:
-                if not audioQ.empty():
-                    ip, audio_chunk = audioQ.get()
+                if not audio_queue.empty():
+                    ip, audio_chunk = audio_queue.get()
                     print(f"Received audio from {ip}: {len(audio_chunk)} bytes")
 
                     # 🔊 Play the audio locally on server
