@@ -69,10 +69,10 @@ class Host:
         self.mic.unmute()
 
         # Start communication threads (assuming they have start() method)
-        threading.Thread(
-            target=self.handle_msgs,
-            daemon=True
-        ).start()
+        # threading.Thread(
+        #     target=self.handle_msgs,
+        #     daemon=True
+        # ).start()
         # threading.Thread(target=self.playback_loop, daemon=True).start()
         # TODO GUI
         # start meeting
@@ -97,16 +97,17 @@ class Host:
             self.mic.stop()
             self.mic.close()
 
-    def handle_msgs(self):
-        """
-        Threaded method: Waits for messages from clients.
-        It will process the incoming messages, handle them accordingly.
-        """
-        while True:
-            msg = self.msgQ.get()
-            opcode, data = clientProtocol.unpack(msg)
-            if opcode in self.commands:
-                self.commands[opcode](data)
+    # def handle_msgs(self):
+    #     """
+    #     Threaded method: Waits for messages from clients.
+    #     It will process the incoming messages, handle them accordingly.
+    #     """
+    #     while True:
+    #         msg = self.msgQ.get()
+    #         opcode, data = clientProtocol.unpack(msg)
+    #         print(f"Received message: {opcode} {data}")
+    #         if opcode in self.commands:
+    #             self.commands[opcode](data)
 
     # def playback_loop(self):
     #     """
@@ -126,6 +127,16 @@ class Host:
     #                     self.AudioOutput.play(audio)
     #                     del self.sync_buffer[client][timestamp]
     #         time.sleep(0.01)
+    def handle_msgs_from_client_logic(self, opcode, data):
+        """
+        handle messages from client logic call functions
+        :param opcode: function opcode
+        :param data: data
+        :return:
+        """
+        if opcode in self.commands:
+            self.commands[opcode](data)
+
 
     def send_video(self, username, frame):
         """

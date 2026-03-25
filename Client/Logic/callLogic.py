@@ -60,7 +60,7 @@ class CallLogic:
         self.mic.unmute()
 
         # Start threads
-        threading.Thread(target=self.handle_msgs, daemon=True).start()
+        # threading.Thread(target=self.handle_msgs, daemon=True).start()
         threading.Thread(target=self.receive_video_loop, daemon=True).start()
 
         try:
@@ -95,13 +95,23 @@ class CallLogic:
         if hasattr(self, "video_comm"):
             self.video_comm.close()
 
-    def handle_msgs(self):
-        """Threaded message handler"""
-        while self.running:
-            msg = self.msgQ.get()
-            opcode, data = clientProtocol.unpack(msg)
-            if opcode in self.commands:
-                self.commands[opcode](*data)
+    # def handle_msgs(self):
+    #     """Threaded message handler"""
+    #     while self.running:
+    #         msg = self.msgQ.get()
+    #         opcode, data = clientProtocol.unpack(msg)
+    #         if opcode in self.commands:
+    #             self.commands[opcode](*data)
+
+    def handle_msgs_from_client_logic(self, opcode, data):
+        """
+        handle messages from client logic call functions
+        :param opcode: function opcode
+        :param data: data
+        :return:
+        """
+        if opcode in self.commands:
+            self.commands[opcode](data)
 
     def receive_video_loop(self):
         """Receive incoming frames from peers into sync_buffer"""

@@ -99,7 +99,6 @@ class Client:
         else:
             print("Invalid role")
         self.handle_msgs_running = False
-
     def handle_msgs(self):
         """
         Handle incoming messages from server
@@ -108,6 +107,9 @@ class Client:
             msg = self.msgsQ.get()
             print(f"Received message: {msg}")
             opcode, data = clientProtocol.unpack(msg)
+            if self.role:
+                self.role.handle_msgs_from_client_logic(opcode, data)
+                continue
             if opcode in self.commands:
                 self.commands[opcode](data)
 
