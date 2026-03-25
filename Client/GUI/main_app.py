@@ -5,6 +5,7 @@ class ZoomApp(wx.App):
 
     def OnInit(self):
         # Pass None for client to run in UI-only mode
+        # 10.0.0.26
         ip = input("Enter server ip: ")
         self.client = Client(ip, 3018)
         frame = HomeFrame(client=self.client)

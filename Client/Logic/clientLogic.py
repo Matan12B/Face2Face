@@ -10,10 +10,10 @@ from Server.ServerComm import ServerComm
 
 class Client:
     def __init__(self, ip="127.0.0.1", port=1231):
-        self.ip = ip
+        self.server_ip = ip
         self.port = port
         self.msgsQ = queue.Queue()
-        self.comm = ClientComm(self.ip, self.port, self.msgsQ)
+        self.comm = ClientComm(self.server_ip, self.port, self.msgsQ)
         # using this server comm for now
         self.role = None
         self.username = ""
