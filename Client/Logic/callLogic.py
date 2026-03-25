@@ -32,7 +32,7 @@ class CallLogic:
         self.audio_comm = AudioClient(host_ip, self.AES)
         self.open_clients[host_ip] = port
         # Local devices
-        self.camera = CameraControl(width=478, height=359)
+        self.camera = CameraControl(width=478, height=359, jpeg_quality=10)
         self.mic = Microphone(50)
         self.AudioOutput = AudioOutput()  # for playback
         self.sync_buffer = {}
