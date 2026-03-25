@@ -4,8 +4,8 @@ import queue
 import time
 import cv2
 import numpy as np
-from MatMeet.Common.Cipher import AESCipher
-from MatMeet.Client.Devices.Camera import CameraControl
+from Common.Cipher import AESCipher
+from Client.Devices.Camera import CameraControl
 
 
 class VideoComm:
@@ -51,7 +51,6 @@ class VideoComm:
         try:
             # Encrypt
             encrypted = self.AES.encrypt_file(frame_bytes)
-            print("error in aes")
             for ip, port in self.users.items():
                 self.udp_socket.sendto(encrypted, (ip, port))
         except Exception as e:
