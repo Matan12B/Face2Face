@@ -2,155 +2,136 @@ import wx
 import cv2
 import numpy as np
 import time
+import threading
+
 
 class CallFrame(wx.Frame):
-
     def __init__(self, call_logic):
         super().__init__(None, title="Meeting", size=(1024, 768))
         self.call_logic = call_logic
 
-        # Start the call logic in background
-        import threading
+        # Start call logic
         threading.Thread(target=self.call_logic.start, daemon=True).start()
 
         panel = wx.Panel(self)
-
         main_sizer = wx.BoxSizer(wx.VERTICAL)
 
         # -----------------
-        # Video grid
+        # Video grid (dynamic: max 4)
         # -----------------
-
         self.video_grid = wx.GridSizer(2, 2, 5, 5)
         self.video_panels = []
 
-        self.camera_width, self.camera_height = 478, 359
+        self.camera_width = 478
+        self.camera_height = 359
 
-        for i in range(4):
-            bitmap = wx.StaticBitmap(panel)
-            bitmap.SetMinSize((self.camera_width, self.camera_height))
-            self.video_panels.append(bitmap)
-            self.video_grid.Add(bitmap, 1, wx.EXPAND)
+        for i in range(4):  # max 4 panels
+            bmp = wx.StaticBitmap(panel, size=(self.camera_width, self.camera_height))
+            self.video_panels.append(bmp)
+            self.video_grid.Add(bmp, 1, wx.EXPAND)
 
         main_sizer.Add(self.video_grid, 1, wx.EXPAND | wx.ALL, 10)
 
         # -----------------
-        # Control bar
+        # Controls
         # -----------------
-
         controls = wx.BoxSizer(wx.HORIZONTAL)
-
         self.mic_btn = wx.Button(panel, label="Mute")
         self.cam_btn = wx.Button(panel, label="Camera Off")
         self.leave_btn = wx.Button(panel, label="Leave")
-
         controls.Add(self.mic_btn, 0, wx.ALL, 5)
         controls.Add(self.cam_btn, 0, wx.ALL, 5)
         controls.AddStretchSpacer()
         controls.Add(self.leave_btn, 0, wx.ALL, 5)
-
         main_sizer.Add(controls, 0, wx.EXPAND | wx.ALL, 10)
 
         panel.SetSizer(main_sizer)
 
-        # Events
-        self.leave_btn.Bind(wx.EVT_BUTTON, self.leave_call)
-        self.mic_btn.Bind(wx.EVT_BUTTON, self.toggle_mic)
-        self.cam_btn.Bind(wx.EVT_BUTTON, self.toggle_camera)
-
-        # Track mute/camera state
+        # -----------------
+        # State
+        # -----------------
         self.is_muted = False
         self.is_camera_off = False
+        self.panel_has_video = [False] * 4
 
-        # FPS control
-        self.last_update = 0
-        self.fps = 24
+        # Pre-create black frame ONCE
+        self.black_frame = np.zeros((self.camera_height, self.camera_width, 3), dtype=np.uint8)
 
         # Timer
+        self.fps = 24
         self.timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.update_frames)
         self.timer.Start(int(1000 / self.fps))
 
-    # -----------------
-    # Frame Updates
-    # -----------------
+        # Event bindings
+        self.leave_btn.Bind(wx.EVT_BUTTON, self.leave_call)
+        self.mic_btn.Bind(wx.EVT_BUTTON, self.toggle_mic)
+        self.cam_btn.Bind(wx.EVT_BUTTON, self.toggle_camera)
 
+    # -----------------
+    # Frame update
+    # -----------------
     def update_frames(self, event):
-        now = time.time()
-        if now - self.last_update < 1 / self.fps:
-            return
-        self.last_update = now
-
-        # -----------------
-        # Self camera
-        # -----------------
+        # ---- SELF ----
         if hasattr(self.call_logic, 'camera') and self.call_logic.camera:
             frame_bytes = self.call_logic.camera.get_frame()
-            if frame_bytes is not None:
-                frame = cv2.imdecode(
-                    np.frombuffer(frame_bytes, np.uint8),
-                    cv2.IMREAD_COLOR
-                )
+            if frame_bytes is not None and not self.is_camera_off:
+                frame = cv2.imdecode(np.frombuffer(frame_bytes, np.uint8), cv2.IMREAD_COLOR)
                 if frame is not None:
                     self._display_frame(0, frame)
+                    self.panel_has_video[0] = True
                 else:
                     self._display_black(0)
             else:
                 self._display_black(0)
-        else:
-            self._display_black(0)
 
-        # -----------------
-        # Other participants
-        # -----------------
+        # ---- OTHERS ----
         if hasattr(self.call_logic, 'sync_buffer'):
             panel_idx = 1
-
             for client_ip, timestamps in list(self.call_logic.sync_buffer.items()):
-                if panel_idx >= 4:
+                if panel_idx >= len(self.video_panels):
                     break
 
                 frame_displayed = False
-
-                for timestamp in sorted(timestamps.keys(), reverse=True):
-                    data = timestamps[timestamp]
-
+                if timestamps:
+                    latest_ts = max(timestamps.keys())
+                    data = timestamps[latest_ts]
                     if data.get("video") is not None:
                         self._display_frame(panel_idx, data["video"])
+                        self.panel_has_video[panel_idx] = True
                         frame_displayed = True
-                        break
 
+                # Only display black if client exists but no video yet
                 if not frame_displayed:
                     self._display_black(panel_idx)
 
                 panel_idx += 1
 
+            # Clear remaining panels (no client connected)
+            for i in range(panel_idx, len(self.video_panels)):
+                self.video_panels[i].SetBitmap(wx.NullBitmap)
+                self.panel_has_video[i] = False
+
     # -----------------
     # Display helpers
     # -----------------
-
-    def _display_frame(self, panel_idx, frame):
-        if frame is None or panel_idx >= len(self.video_panels):
+    def _display_frame(self, idx, frame):
+        if frame is None or idx >= len(self.video_panels):
             return
+        frame = cv2.resize(frame, (self.camera_width, self.camera_height))
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w = rgb.shape[:2]
+        bitmap = wx.Bitmap.FromBuffer(w, h, rgb)
+        panel = self.video_panels[idx]
+        panel.SetBitmap(bitmap)
+        panel.Refresh()
 
-        try:
-            frame_resized = cv2.resize(frame, (self.camera_width, self.camera_height))
-            rgb = cv2.cvtColor(frame_resized, cv2.COLOR_BGR2RGB)
-            h, w = rgb.shape[:2]
-            bitmap = wx.Bitmap.FromBuffer(w, h, rgb)
-            self.video_panels[panel_idx].SetBitmap(bitmap)
-        except Exception as e:
-            print("Display error:", e)
-
-    def _display_black(self, panel_idx):
-        """Display a black frame"""
-        black = np.zeros((self.camera_height, self.camera_width, 3), dtype=np.uint8)
-        self._display_frame(panel_idx, black)
+    def _display_black(self, idx):
+        self._display_frame(idx, self.black_frame)
 
     # -----------------
     # Controls
     # -----------------
-
     def toggle_mic(self, event):
         if hasattr(self.call_logic, 'mic'):
             if self.is_muted:
@@ -172,15 +153,13 @@ class CallFrame(wx.Frame):
                 self.call_logic.camera.stop()
                 self.cam_btn.SetLabel("Camera On")
                 self.is_camera_off = True
+                self._display_black(0)
 
     def leave_call(self, event):
         self.timer.Stop()
-
         if hasattr(self.call_logic, 'camera'):
-            self.call_logic.camera.stop()
-
+            self.call_logic.camera.stop(pause_only=False)
         if hasattr(self.call_logic, 'mic'):
             self.call_logic.mic.stop()
             self.call_logic.mic.close()
-
         self.Close()
