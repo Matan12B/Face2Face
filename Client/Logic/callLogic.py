@@ -140,7 +140,6 @@ class CallLogic:
         while self.running:
             while not self.video_comm.frameQ.empty():
                 frame, timestamp, addr = self.video_comm.frameQ.get()
-                print(timestamp, addr)
                 client_ip = addr[0]
                 if self.meeting_start_time is not None:
                     timestamp = timestamp - self.meeting_start_time
@@ -157,8 +156,6 @@ class CallLogic:
         while self.running:
             while not self.audio_comm.audio_queue.empty():
                 audio_bytes, timestamp, sender_ip = self.audio_comm.audio_queue.get()
-                print(audio_bytes, timestamp, sender_ip)
-
                 client_ip = sender_ip
                 if self.meeting_start_time is not None:
                     timestamp -= self.meeting_start_time
@@ -187,8 +184,10 @@ class CallLogic:
             self.sync_buffer[client_ip][timestamp] = {"audio": None, "video": None}
         self.sync_buffer[client_ip][timestamp]["audio"] = audio
 
-    def handle_join(self, ip, port):
+    def handle_join(self, data):
         """New peer joined (store port and add to VideoComm)"""
+        ip = data[0]
+        port = int(data[1])
         print(f"{ip} joined the call")
         self.open_clients[ip] = port
 
