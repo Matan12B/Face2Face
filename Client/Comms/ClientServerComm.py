@@ -22,13 +22,13 @@ class ClientServer:
         adds new clients and recv messages
         :return:
         """
-        print("server listen on port:", self.port)
+        print("host server listen on port:", self.port)
         while True:
             rlist, _, _ = select.select([self.server_socket] + list(self.open_clients_soc_ip.keys()), [], [], 0.01)
             for current_socket in rlist:
                 if current_socket is self.server_socket:
                     client_socket, addr = self.server_socket.accept()
-                    print(f"{addr[0]} connected")
+                    print(f"{addr[0]} connected to client server")
                     self.open_clients[addr[0]][1] = client_socket
 
                 else:

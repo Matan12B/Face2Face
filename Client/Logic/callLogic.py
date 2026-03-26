@@ -60,12 +60,12 @@ class CallLogic:
         self.mic.unmute()
 
         # Start threads
-        # threading.Thread(target=self.handle_msgs, daemon=True).start()
+        threading.Thread(target=self.handle_msgs_from_host, daemon=True).start()
         threading.Thread(target=self.receive_video_loop, daemon=True).start()
         threading.Thread(target=self.receive_audio_loop, daemon=True).start()
 
         try:
-            while self.running:
+            while self.running and self.meeting_start_time is not None:
                 # Capture and send own video
                 if self.meeting_start_time is not None:
                     timestamp = time.time() - self.meeting_start_time
@@ -79,7 +79,7 @@ class CallLogic:
                         if audio_chunk:
                             # Send audio using your updated protocol with sender IP
                             audio_msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
-                            self.audio_comm.send_audio(audio_msg, self.ip, timestamp)
+                            self.audio_comm.send_audio(audio_msg)
 
 
                     time.sleep(0.001)
@@ -118,6 +118,7 @@ class CallLogic:
         """
         if opcode in self.commands:
             self.commands[opcode](data)
+
     def handle_msgs_from_host(self):
         """
 
@@ -141,14 +142,17 @@ class CallLogic:
         while self.running:
             while not self.video_comm.frameQ.empty():
                 frame, timestamp, addr = self.video_comm.frameQ.get()
-                print(frame, timestamp, addr)
+                print(timestamp, addr)
                 client_ip = addr[0]
-                timestamp = timestamp - self.meeting_start_time
-                if client_ip not in self.sync_buffer:
-                    self.sync_buffer[client_ip] = {}
-                if timestamp not in self.sync_buffer[client_ip]:
-                    self.sync_buffer[client_ip][timestamp] = {"audio": None, "video": None}
-                self.sync_buffer[client_ip][timestamp]["video"] = frame
+                if self.meeting_start_time is not None:
+                    timestamp = timestamp - self.meeting_start_time
+                    if client_ip not in self.sync_buffer:
+                        self.sync_buffer[client_ip] = {}
+                    if timestamp not in self.sync_buffer[client_ip]:
+                        self.sync_buffer[client_ip][timestamp] = {"audio": None, "video": None}
+                    self.sync_buffer[client_ip][timestamp]["video"] = frame
+                else:
+                    print("didnt recv start time")
             time.sleep(0.005)
     
     def receive_audio_loop(self):
@@ -158,12 +162,16 @@ class CallLogic:
                 print(audio_bytes, timestamp, sender_ip)
 
                 client_ip = sender_ip
-                timestamp -= self.meeting_start_time
-                if client_ip not in self.sync_buffer:
-                    self.sync_buffer[client_ip] = {}
-                if timestamp not in self.sync_buffer[client_ip]:
-                    self.sync_buffer[client_ip][timestamp] = {"video": None, "audio": None}
-                self.sync_buffer[client_ip][timestamp]["audio"] = audio_bytes
+                if self.meeting_start_time is not None:
+                    timestamp -= self.meeting_start_time
+                    if client_ip not in self.sync_buffer:
+                        self.sync_buffer[client_ip] = {}
+                    if timestamp not in self.sync_buffer[client_ip]:
+                        self.sync_buffer[client_ip][timestamp] = {"video": None, "audio": None}
+                    self.sync_buffer[client_ip][timestamp]["audio"] = audio_bytes
+                else:
+                    print("didnt recv start time")
+
             time.sleep(0.005)
 
     # === Command Handlers ===

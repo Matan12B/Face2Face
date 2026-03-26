@@ -268,10 +268,10 @@ class Host:
         """
         send the connected client the meeting start time for audio and video sync
         """
+        print("sending start time")
         self.host_server.send_msg(ip, clientProtocol.build_meeting_start_time(self.meeting_start_time))
 
     def close(self):
-        print("Closing call...")
         print("Closing call...")
         # Stop running loops
         self.running = False
