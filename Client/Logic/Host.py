@@ -205,7 +205,7 @@ class Host:
 
                     if audio is not None:
                         try:
-                            self.AudioOutput.play(audio)
+                            self.AudioOutput.play_bytes(audio)
                         except Exception as e:
                             print("audio play error:", e)
 

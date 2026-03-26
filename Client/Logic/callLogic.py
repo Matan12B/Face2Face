@@ -14,7 +14,6 @@ from Client.Protocol import clientProtocol
 from Common.Cipher import AESCipher
 from Client.Comms.ClientComm import ClientComm
 
-
 class CallLogic:
     """
     Guest call logic (LAN P2P)
@@ -44,6 +43,8 @@ class CallLogic:
         # Buffers
         self.sync_buffer = {}
         self.send_queue = queue.Queue()
+        self.UI_queue = queue.Queue()
+        self.remote_video_queue = queue.Queue()
 
         # Timing/network identity
         self.meeting_start_time = None
@@ -55,9 +56,12 @@ class CallLogic:
             "hd": self.handle_disconnect,
             "gmst": self.get_meeting_start_time
         }
-        self.remote_video_queue = queue.Queue()
 
         self.running = True
+
+        # sync config
+        self.sync_bucket = 0.05      # 50ms buckets
+        self.playback_delay = 0.10   # 100ms jitter buffer
 
     def start(self):
         """
@@ -77,6 +81,7 @@ class CallLogic:
 
         if not self.running:
             return
+
         threading.Thread(target=self.playback_loop, daemon=True).start()
         threading.Thread(target=self.receive_video_loop, daemon=True).start()
         threading.Thread(target=self.receive_audio_loop, daemon=True).start()
@@ -86,10 +91,9 @@ class CallLogic:
                 if self.meeting_start_time is not None:
                     timestamp = time.time() - float(self.meeting_start_time)
 
-                    # -------- local camera preview + send --------
+                    # local camera preview + send
                     frame = self.camera.get_frame()
                     if frame is not None:
-                        # keep only newest self frame for GUI
                         while self.UI_queue.qsize() >= 1:
                             try:
                                 self.UI_queue.get_nowait()
@@ -104,7 +108,7 @@ class CallLogic:
                             frame_data = clientProtocol.build_video_msg(timestamp, frame_bytes)
                             self.video_comm.send_frame(frame_data)
 
-                    # -------- local audio send --------
+                    # local audio send
                     if self.mic.running:
                         audio_chunk = self.mic.record()
                         if audio_chunk:
@@ -119,14 +123,7 @@ class CallLogic:
             self.cleanup()
 
     def cleanup(self):
-        """
-        Stop devices and communications.
-        """
-        if not self.running:
-            print("Closing guest call...")
-        else:
-            print("Closing guest call...")
-
+        print("Closing guest call...")
         self.running = False
 
         try:
@@ -141,6 +138,12 @@ class CallLogic:
                 self.mic.close()
         except Exception as e:
             print("mic stop error:", e)
+
+        try:
+            if hasattr(self, "AudioOutput"):
+                self.AudioOutput.stop()
+        except Exception as e:
+            print("audio output stop error:", e)
 
         try:
             if hasattr(self, "video_comm"):
@@ -161,16 +164,10 @@ class CallLogic:
             print("host comm close error:", e)
 
     def handle_msgs_from_client_logic(self, opcode, data):
-        """
-        Handle messages from outer client logic.
-        """
         if opcode in self.commands:
             self.commands[opcode](data)
 
     def handle_msgs_from_host(self):
-        """
-        Handle messages from host.
-        """
         print("started listening to host server")
         while self.running:
             msg = self.msgs_from_host.get()
@@ -189,9 +186,6 @@ class CallLogic:
                     print(f"command {opcode} error:", e)
 
     def get_meeting_start_time(self, data):
-        """
-        Get meeting start time from host for timestamps sync.
-        """
         try:
             if isinstance(data, list):
                 self.meeting_start_time = float(data[0])
@@ -200,6 +194,9 @@ class CallLogic:
             print("meeting start time:", self.meeting_start_time)
         except Exception as e:
             print("meeting start time parse error:", e)
+
+    def _get_sync_ts(self, timestamp):
+        return round(float(timestamp) / self.sync_bucket) * self.sync_bucket
 
     def receive_video_loop(self):
         """
@@ -222,16 +219,17 @@ class CallLogic:
                     print("didnt recv start time")
                     continue
 
-                rel_timestamp = timestamp - float(self.meeting_start_time)
+                # incoming media timestamp is already relative to meeting start
+                sync_ts = self._get_sync_ts(timestamp)
 
                 if client_ip not in self.sync_buffer:
                     self.sync_buffer[client_ip] = {}
 
-                if rel_timestamp not in self.sync_buffer[client_ip]:
-                    self.sync_buffer[client_ip][rel_timestamp] = {"audio": None, "video": None}
+                if sync_ts not in self.sync_buffer[client_ip]:
+                    self.sync_buffer[client_ip][sync_ts] = {"audio": None, "video": None}
 
-                self.sync_buffer[client_ip][rel_timestamp]["video"] = frame
-                self._prune_old_frames(client_ip, keep=3)
+                self.sync_buffer[client_ip][sync_ts]["video"] = frame
+                self._prune_old_frames(client_ip, keep=20)
 
             time.sleep(0.005)
 
@@ -252,19 +250,21 @@ class CallLogic:
                     print("didnt recv start time")
                     continue
 
-                rel_timestamp = timestamp - float(self.meeting_start_time)
+                # incoming media timestamp is already relative to meeting start
+                sync_ts = self._get_sync_ts(timestamp)
 
                 if client_ip not in self.sync_buffer:
                     self.sync_buffer[client_ip] = {}
 
-                if rel_timestamp not in self.sync_buffer[client_ip]:
-                    self.sync_buffer[client_ip][rel_timestamp] = {"video": None, "audio": None}
+                if sync_ts not in self.sync_buffer[client_ip]:
+                    self.sync_buffer[client_ip][sync_ts] = {"video": None, "audio": None}
 
-                self.sync_buffer[client_ip][rel_timestamp]["audio"] = audio_bytes
+                self.sync_buffer[client_ip][sync_ts]["audio"] = audio_bytes
+                self._prune_old_frames(client_ip, keep=20)
 
             time.sleep(0.005)
 
-    def _prune_old_frames(self, client_ip, keep=3):
+    def _prune_old_frames(self, client_ip, keep=20):
         """
         Keep only the newest timestamps per remote client.
         """
@@ -283,6 +283,9 @@ class CallLogic:
                 del timestamps[ts]
 
     def playback_loop(self):
+        """
+        Play synced audio and send synced remote video to GUI.
+        """
         while self.running:
             if self.meeting_start_time is None:
                 time.sleep(0.01)
@@ -291,19 +294,22 @@ class CallLogic:
             current_time = time.time() - float(self.meeting_start_time)
 
             for client_ip in list(self.sync_buffer.keys()):
+                if client_ip not in self.sync_buffer:
+                    continue
+
                 timestamps = sorted(self.sync_buffer[client_ip].keys())
 
                 for ts in timestamps:
-                    if ts > current_time:
+                    if ts > current_time - self.playback_delay:
                         break
 
-                    data = self.sync_buffer[client_ip][ts]
+                    data = self.sync_buffer[client_ip].get(ts, {})
                     frame = data.get("video")
                     audio = data.get("audio")
 
                     if audio is not None:
                         try:
-                            self.AudioOutput.play(audio)
+                            self.AudioOutput.play_bytes(audio)
                         except Exception as e:
                             print("audio play error:", e)
 
@@ -315,7 +321,8 @@ class CallLogic:
                                 break
                         self.remote_video_queue.put((client_ip, frame))
 
-                    del self.sync_buffer[client_ip][ts]
+                    if ts in self.sync_buffer[client_ip]:
+                        del self.sync_buffer[client_ip][ts]
 
             time.sleep(0.01)
 
@@ -324,14 +331,16 @@ class CallLogic:
     # =====================
 
     def handle_video(self, client_ip, username, timestamp, frame):
+        sync_ts = self._get_sync_ts(timestamp)
+
         if client_ip not in self.sync_buffer:
             self.sync_buffer[client_ip] = {}
 
-        if timestamp not in self.sync_buffer[client_ip]:
-            self.sync_buffer[client_ip][timestamp] = {"audio": None, "video": None}
+        if sync_ts not in self.sync_buffer[client_ip]:
+            self.sync_buffer[client_ip][sync_ts] = {"audio": None, "video": None}
 
-        self.sync_buffer[client_ip][timestamp]["video"] = frame
-        self._prune_old_frames(client_ip, keep=3)
+        self.sync_buffer[client_ip][sync_ts]["video"] = frame
+        self._prune_old_frames(client_ip, keep=20)
 
     def handle_audio(self, data):
         """
@@ -345,13 +354,16 @@ class CallLogic:
         except Exception:
             return
 
+        sync_ts = self._get_sync_ts(timestamp)
+
         if client_ip not in self.sync_buffer:
             self.sync_buffer[client_ip] = {}
 
-        if timestamp not in self.sync_buffer[client_ip]:
-            self.sync_buffer[client_ip][timestamp] = {"audio": None, "video": None}
+        if sync_ts not in self.sync_buffer[client_ip]:
+            self.sync_buffer[client_ip][sync_ts] = {"audio": None, "video": None}
 
-        self.sync_buffer[client_ip][timestamp]["audio"] = audio
+        self.sync_buffer[client_ip][sync_ts]["audio"] = audio
+        self._prune_old_frames(client_ip, keep=20)
 
     def handle_join(self, data):
         """
@@ -394,8 +406,5 @@ class CallLogic:
             del self.sync_buffer[ip]
 
     def leave_call(self):
-        """
-        Stop running and cleanup.
-        """
         self.running = False
         self.cleanup()
