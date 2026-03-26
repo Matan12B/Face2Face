@@ -61,6 +61,9 @@ class CallLogic:
 
         # Start threads
         threading.Thread(target=self.handle_msgs_from_host, daemon=True).start()
+        while self.meeting_start_time is None:
+            time.sleep(0.01)
+            continue
         threading.Thread(target=self.receive_video_loop, daemon=True).start()
         threading.Thread(target=self.receive_audio_loop, daemon=True).start()
 
@@ -135,7 +138,7 @@ class CallLogic:
         """
         get meeting start time from host for time stamps
         """
-        self.meeting_start_time = data
+        self.meeting_start_time = float(data)
         print("meeting start time:", self.meeting_start_time)
 
     def receive_video_loop(self):
