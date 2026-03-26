@@ -37,8 +37,8 @@ class CallLogic:
         self.AudioOutput = AudioOutput()  # for playback
         self.sync_buffer = {}
         self.meeting_start_time = None
-        # self.ip = socket.gethostbyname(socket.gethostname())
-        self.ip = "192.168.4.73"
+        self.ip = socket.gethostbyname(socket.gethostname())
+        #self.ip = "192.168.4.73"
         # Command handlers
         self.commands = {
             "ha": self.handle_audio,
