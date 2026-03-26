@@ -63,7 +63,6 @@ class CallLogic:
         threading.Thread(target=self.handle_msgs_from_host, daemon=True).start()
         while self.meeting_start_time is None:
             time.sleep(0.01)
-            continue
         threading.Thread(target=self.receive_video_loop, daemon=True).start()
         threading.Thread(target=self.receive_audio_loop, daemon=True).start()
 

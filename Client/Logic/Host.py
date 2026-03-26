@@ -273,7 +273,6 @@ class Host:
         """
         print("sending start time")
         msg = clientProtocol.build_meeting_start_time(self.meeting_start_time)
-        print(msg)
         self.host_server.send_msg(ip, msg)
 
     def close(self):

@@ -29,7 +29,14 @@ class ClientServer:
                 if current_socket is self.server_socket:
                     client_socket, addr = self.server_socket.accept()
                     print(f"{addr[0]} connected to client server")
-                    self.open_clients[addr[0]][1] = client_socket
+                    if addr[0] not in self.open_clients:
+                        self.open_clients[addr[0]] = [None, None]
+
+                    # Store socket
+                    self.open_clients[addr[0]][0] = client_socket
+
+                    # Register in open_clients_soc_ip for sending/receiving
+                    self.open_clients_soc_ip[client_socket] = addr[0]
 
                 else:
                     if current_socket in self.open_clients_soc_ip.keys():
