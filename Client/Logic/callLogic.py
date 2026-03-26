@@ -37,7 +37,7 @@ class CallLogic:
         self.open_clients[host_ip] = port
 
         # Local devices
-        self.camera = CameraControl(width=359, height=270, jpeg_quality=60)
+        self.camera = CameraControl(width=359, height=270, jpeg_quality=25)
         self.mic = Microphone(50)
         self.AudioOutput = AudioOutput()
 
