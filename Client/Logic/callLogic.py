@@ -58,8 +58,7 @@ class CallLogic:
 
         self.meeting_start_time = None
         self.running = True
-        self.send_queue = None
-        # separate audio playback queue so audio won't block video receive
+        self.send_queue = queue.Queue(maxsize=1)
         self.audio_play_queue = queue.Queue()
 
     def start(self):
@@ -69,76 +68,88 @@ class CallLogic:
         self.mic.start()
         self.mic.unmute()
 
+        self.send_queue = queue.Queue(maxsize=1)
+
         threading.Thread(target=self.handle_msgs_from_host, daemon=True).start()
         threading.Thread(target=self.receive_video_loop, daemon=True).start()
-        # threading.Thread(target=self.receive_audio_loop, daemon=True).start()
-        # threading.Thread(target=self.audio_play_loop, daemon=True).start()
+        threading.Thread(target=self.send_loop, daemon=True).start()
+        threading.Thread(target=self.audio_send_loop, daemon=True).start()
 
         try:
             while self.running:
                 frame = self.camera.get_frame()
 
-                if frame is not None:
-                    frame = frame.copy()
+                if frame is None:
+                    time.sleep(0.005)
+                    continue
 
-                    # UI preview
-                    while self.UI_queue.qsize() >= 1:
+                frame = frame.copy()
+
+                while self.UI_queue.qsize() >= 1:
+                    try:
+                        self.UI_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                self.UI_queue.put(frame)
+
+                if self.meeting_start_time is not None:
+                    timestamp = time.time() - self.meeting_start_time
+
+                    if self.send_queue.full():
                         try:
-                            self.UI_queue.get_nowait()
+                            self.send_queue.get_nowait()
                         except queue.Empty:
-                            break
+                            pass
 
-                    self.UI_queue.put(frame)
-
-                    # only send if meeting started
-                    if self.meeting_start_time is not None:
-                        timestamp = time.time() - self.meeting_start_time
-                        while self.send_queue.qsize() > 2:
-                            try:
-                                self.send_queue.get_nowait()
-                            except queue.Empty:
-                                break
-                        self.send_queue.put((frame, timestamp))
-
-
-
-                        if self.mic.running:
-                            audio_chunk = self.mic.record()
-                            if audio_chunk:
-                                audio_msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
-                                self.audio_comm.send_audio(audio_msg)
+                    try:
+                        self.send_queue.put_nowait((frame, timestamp))
+                    except queue.Full:
+                        pass
 
                 time.sleep(0.01)
 
-        except KeyboardInterrupt:
-            print("Guest call interrupted.")
+        except Exception as e:
+            print("guest start loop error:", e)
         finally:
             self.cleanup()
 
-    def send_loop(self):
-        while self.running:
-            try:
-                frame, timestamp = self.send_queue.get(timeout=1)
+def send_loop(self):
+    while self.running:
+        try:
+            frame, timestamp = self.send_queue.get(timeout=1)
 
-                ok, encoded = cv2.imencode('.jpg', frame, self.encode_params)
-                if ok:
-                    frame_bytes = encoded.tobytes()
-                    frame_data = clientProtocol.build_video_msg(timestamp, frame_bytes)
-                    self.video_comm.send_frame(frame_data)
-            except queue.Empty:
+            ok, encoded = cv2.imencode('.jpg', frame, self.encode_params)
+            if not ok:
                 continue
-            except Exception as e:
-                print("send_loop error:", e)
+
+            frame_bytes = encoded.tobytes()
+            frame_data = clientProtocol.build_video_msg(timestamp, frame_bytes)
+            self.video_comm.send_frame(frame_data)
+
+        except queue.Empty:
+            continue
+        except Exception as e:
+            print("send_loop error:", e)
+            time.sleep(0.02)
 
     def audio_send_loop(self):
         while self.running:
-            if self.mic.running and self.meeting_start_time is not None:
-                audio_chunk = self.mic.record()
-                if audio_chunk:
-                    timestamp = time.time() - self.meeting_start_time
-                    msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
-                    self.audio_comm.send_audio(msg)
+            try:
+                if not self.mic.running or self.meeting_start_time is None:
+                    time.sleep(0.01)
+                    continue
 
+                audio_chunk = self.mic.record()
+                if not audio_chunk:
+                    continue
+
+                timestamp = time.time() - self.meeting_start_time
+                msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
+                self.audio_comm.send_audio(msg)
+
+            except Exception as e:
+                print("audio_send_loop error:", e)
+                time.sleep(0.02)
 
     def receive_video_loop(self):
         """

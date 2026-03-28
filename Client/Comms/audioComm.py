@@ -135,242 +135,180 @@ class AudioClient:
         return flag
 
 
+import socket
+import threading
+import queue
+import select
+import time
+
+from Client.Protocol import clientProtocol
+
+
 class AudioServer:
-    def __init__(self, port=3000, AES=None, open_clients={}):
-        self.server_socket = socket.socket()
-        self.port = 3000 # this will be from the settings
-        self.audio_queue = queue.Queue()
-        # ip: [port]
+    def __init__(self, port=3000, AES=None, open_clients=None):
+        """
+        :param port:
+        :param AES:
+        :param open_clients:
+        :return:
+        """
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+        self.port = port
         self.AES = AES
-        self.open_clients= open_clients
-        # soc: ip
-        self.open_clients_soc_ip = {}
-        self.server_socket.bind(('0.0.0.0', self.port))
-        self.server_socket.listen(4)
-        self.mic = Microphone(50)
-        threading.Thread(target=self._mainLoop,).start()
+        self.open_clients = open_clients if open_clients is not None else {}
+
+        self.audio_queue = queue.Queue()
+
+        # audio sockets only
+        self.audio_clients = {}          # ip -> socket
+        self.open_clients_soc_ip = {}    # socket -> ip
+
+        self.running = True
+
+        self.server_socket.bind(("0.0.0.0", self.port))
+        self.server_socket.listen(8)
+
+        threading.Thread(target=self._mainLoop, daemon=True).start()
+
+    def _recv_exact(self, sock, size):
+        """
+        :param sock:
+        :param size:
+        :return:
+        """
+        data = b""
+        while len(data) < size and self.running:
+            chunk = sock.recv(size - len(data))
+            if not chunk:
+                return None
+            data += chunk
+        return data
 
     def _mainLoop(self):
         """
-        adds new clients and recv messages
         :return:
         """
-        print("server listen on port:", self.port)
-        while True:
-            rlist, _, _ = select.select([self.server_socket] + list(self.open_clients_soc_ip.keys()), [], [], 0.01)
+        print("audio server listen on port:", self.port)
+
+        while self.running:
+            try:
+                rlist, _, _ = select.select(
+                    [self.server_socket] + list(self.open_clients_soc_ip.keys()),
+                    [],
+                    [],
+                    0.01
+                )
+            except Exception:
+                continue
+
             for current_socket in rlist:
                 if current_socket is self.server_socket:
-                    client_socket, addr = self.server_socket.accept()
-                    print(f"{addr[0]} connected")
-                    while addr[0] not in self.open_clients.keys():
-                        time.sleep(0.01)
-                        continue
-                    self.open_clients[addr[0]][1] = client_socket
-                    # we already have a shared key with this client, so we don't need to exchange keys'
-                    #todo decide if we need to exchange keys or not
-                    # threading.Thread(target=self._exchange_key, args=(client_socket, addr[0],)).start()
+                    try:
+                        client_socket, addr = self.server_socket.accept()
+                        client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+                        client_ip = addr[0]
+                        self.audio_clients[client_ip] = client_socket
+                        self.open_clients_soc_ip[client_socket] = client_ip
+
+                        print(f"{client_ip} connected to audio server")
+                    except Exception as e:
+                        print("audio accept error:", e)
+
                 else:
-                    if current_socket in self.open_clients_soc_ip.keys():
-                        decrypt_audio_chunk = ""
-                        audio_chunk = ""
-                        current_ip = self._find_ip_by_socket(current_socket)
-                        try:
-                            length = current_socket.recv(8).decode()
-                            if length:
-                                audio_chunk = current_socket.recv(int(length))
-                            else:
-                                self.close_client(current_ip)
-                            if current_ip and current_ip in self.open_clients and audio_chunk and self.AES:
-                                decrypt_audio_chunk = self.AES.decrypt_file(audio_chunk)
-                        except Exception as e:
-                            print(f"error in receiving message - {e}")
-                            self.close_client(current_ip)
+                    client_ip = self.open_clients_soc_ip.get(current_socket)
+                    if not client_ip:
+                        continue
+
+                    try:
+                        length_bytes = self._recv_exact(current_socket, 8)
+                        if not length_bytes:
+                            self.close_client(client_ip)
                             continue
-                        if decrypt_audio_chunk:
-                            audio, header = clientProtocol.unpack_file(decrypt_audio_chunk)
-                            if len(header) == 3:
-                                opcode = header[0]
-                                timestamp = float(header[1])
-                                sender_ip = header[2]
-                                self.audio_queue.put((audio, timestamp, sender_ip))
-                            else:
-                                print("incorrect audio msg")
 
-    def _exchange_key(self, client_soc, client_ip):
-        """
-        Exchange the Diffie-Hellman key with the client and establish a shared AES key.
-        :param client_soc: The client's socket.
-        :param client_ip: The client's IP address.
-        """
-        diffie = DiffiHelman()
-        diffie.create_keys()
-        shared_key = None
-        client_public_key = None
-        try:
-            client_soc.send(str(diffie.public_key).zfill(5).encode())
-            client_public_key = int(client_soc.recv(5).decode())
-        except Exception as e:
-            print(f"Error in sending/receiving public key: {e}")
-        if client_public_key:
-            shared_key = pow(client_public_key, diffie.private_key, diffie.p)
-            shared_key = str(shared_key)
+                        msg_len = int(length_bytes.decode())
+                        payload = self._recv_exact(current_socket, msg_len)
+                        if not payload:
+                            self.close_client(client_ip)
+                            continue
 
-        if shared_key:
-            print(f"Shared key established with client {client_ip}: {shared_key}")
-            self.open_clients[client_ip] = [client_soc, AESCipher(shared_key)]
-            self.open_clients_soc_ip[client_soc] = client_ip
-        else:
-            print(f"Failed to establish shared key with {client_ip}")
+                        if not self.AES:
+                            continue
+
+                        decrypt_audio_chunk = self.AES.decrypt_file(payload)
+                        audio, header = clientProtocol.unpack_file(decrypt_audio_chunk)
+
+                        if len(header) == 3:
+                            opcode = header[0]
+                            timestamp = float(header[1])
+                            sender_ip = header[2]
+                            self.audio_queue.put((audio, timestamp, sender_ip))
+                        else:
+                            print("incorrect audio msg")
+
+                    except Exception as e:
+                        print(f"audio receive error from {client_ip}: {e}")
+                        self.close_client(client_ip)
 
     def close_client(self, client_ip):
-        """Closes the client connection safely."""
+        """
+        :param client_ip:
+        :return:
+        """
         try:
-            if client_ip in self.open_clients:
-                client_soc = self.open_clients[client_ip][0]
+            if client_ip in self.audio_clients:
+                client_soc = self.audio_clients[client_ip]
 
-                # Remove from dicts first
-                del self.open_clients_soc_ip[client_soc]
-                del self.open_clients[client_ip]
-                # Now close socket
+                if client_soc in self.open_clients_soc_ip:
+                    del self.open_clients_soc_ip[client_soc]
+
+                del self.audio_clients[client_ip]
                 client_soc.close()
-                print(f"Client {client_ip} closed.")
+                print(f"Audio client {client_ip} closed.")
         except Exception as e:
-            print(f"Error closing client {client_ip}: {e}")
+            print(f"Error closing audio client {client_ip}: {e}")
 
     def broadcast_audio(self, audio_chunk, sender_ip):
         """
-        send audio to all connected users except the sender
-        :param audio: audio file
-        :param sender_ip: ip of the sender
-        :param timestamp: timestamp of the audio chunk
-        :return: None
+        :param audio_chunk:
+        :param sender_ip:
+        :return:
         """
-        for ip in list(self.open_clients.keys()):
-            if ip and not ip == sender_ip:
+        for ip in list(self.audio_clients.keys()):
+            if ip != sender_ip:
                 self.send_audio(ip, audio_chunk)
 
     def send_audio(self, client_ip, audio_chunk):
         """
-        send audio msg to ip
-        """
-        if client_ip in self.open_clients.keys():
-            soc = self._find_socket_by_ip(client_ip)
-            self._send_audio(soc, audio_chunk)
-
-    def _send_audio(self, client_soc, audio_msg):
-        """
-        encrypt the audio and send it to the client
         :param client_ip:
-        :param audio_msg: audio file and timestamp
+        :param audio_chunk:
         :return:
         """
-        if client_soc in self.open_clients_soc_ip.keys():
-            client_ip = self._find_ip_by_socket(client_soc)
-            encrypted_audio_chunk = self.AES.encrypt_file(audio_msg)
-            try:
-                client_soc.send(str(len(encrypted_audio_chunk)).zfill(8).encode())
-                client_soc.send(encrypted_audio_chunk)
-            except Exception as e:
-                print(f"error in sending message - {e}")
-                self.close_client(client_ip)
+        if client_ip not in self.audio_clients or not self.AES:
+            return
 
-    def _find_ip_by_socket(self, client_soc):
-        """
+        client_soc = self.audio_clients[client_ip]
+        encrypted_audio_chunk = self.AES.encrypt_file(audio_chunk)
 
-        """
-        ret = ""
-        if client_soc in self.open_clients_soc_ip.keys():
-            ret = self.open_clients_soc_ip[client_soc]
-        return ret
-
-    def _find_socket_by_ip(self, client_ip):
-        """
-        return the matching socket for the ip
-        :param client_ip: ip
-        :return: client socket
-        """
-        if client_ip in self.open_clients.keys():
-            # socket
-            ret = self.open_clients[client_ip][0]
-        else:
-            ret = None
-        return ret
-
-
-if __name__ == "__main__":
-    import sys
-
-    # if len(sys.argv) < 2:
-    #     print("Usage: python audioComm.py [server|client]")
-    #     sys.exit(1)
-
-    # mode = sys.argv[1].lower()
-    mode = "client"
-
-    if mode == "server":
-        print("Starting audio server on port 1234...")
-        audio_queue = queue.Queue()
-        server = AudioServer(1234, audio_queue)
-
-        # 🔊 NEW: create local speaker output
-        from Client.Devices.AudioOutputDevice import AudioOutput
-
-        speaker = AudioOutput(rate=16000, channels=1)  # match mic settings
-
-        # Wait for audio chunks, play and broadcast
-        print("Server running. Waiting for clients and audio chunks...")
         try:
-            while True:
-                if not audio_queue.empty():
-                    ip, audio_chunk = audio_queue.get()
-                    print(f"Received audio from {ip}: {len(audio_chunk)} bytes")
+            client_soc.sendall(str(len(encrypted_audio_chunk)).zfill(8).encode())
+            client_soc.sendall(encrypted_audio_chunk)
+        except Exception as e:
+            print(f"audio send error to {client_ip}: {e}")
+            self.close_client(client_ip)
 
-                    # 🔊 Play the audio locally on server
-                    speaker.play_bytes(audio_chunk)
+    def close(self):
+        """
+        :return:
+        """
+        self.running = False
 
-                    # Broadcast to other clients with timestamp
-                    timestamp = int(time.time() * 1000)
-                    server.broadcast_audio(audio_chunk, ip, timestamp)
-                    print(f"Broadcasted audio to other clients (timestamp: {timestamp})")
+        for ip in list(self.audio_clients.keys()):
+            self.close_client(ip)
 
-                time.sleep(0.01)
-
-        except KeyboardInterrupt:
-            print("\nServer shutting down...")
-        finally:
-            speaker.stop()
-
-    elif mode == "client":
-        print("Starting audio client, connecting to 127.0.0.1:1234...")
-        audio_queue = queue.Queue()
-        client = AudioClient("10.0.0.26", 1234, audio_queue)
-        # 🔊 NEW: import your audio classes
-
-        mic = Microphone(volume=70, rate=16000, channels=1, chunk=1024)
-        speaker = AudioOutput(rate=16000, channels=1)
-        # Wait for connection
-        time.sleep(1)
-        if not client.open:
-            print("Failed to connect to server")
-            sys.exit(1)
-        print("Connected! Starting live audio...")
-        mic.start()
-        mic.unmute()
         try:
-            while True:
-                # 🎙️ RECORD + SEND
-                audio_chunk = mic.record()
-                client.send_audio(audio_chunk)
-                # 🔊 RECEIVE + PLAy
-                while not audio_queue.empty():
-                    received_audio = audio_queue.get()
-                    speaker.play_bytes(received_audio)
-        except KeyboardInterrupt:
-            print("\nClient shutting down...")
-        finally:
-            mic.close()
-            speaker.stop()
-            client.close_client()
-    else:
-        print("Invalid mode. Use 'server' or 'client'")
-        sys.exit(1)
+            self.server_socket.close()
+        except Exception:
+            pass

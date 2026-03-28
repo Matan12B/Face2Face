@@ -25,7 +25,7 @@ class Host:
         self.AES = AESCipher(meeting_key)
 
         self.host_server = ClientServer(port, self.msgQ, self.open_clients, self.AES)
-        self.audio_comm = AudioServer(self.AES, self.open_clients)
+        self.audio_comm = AudioServer(AES=self.AES, open_clients=self.open_clients)
         self.video_comm = VideoComm(self.AES, self.open_clients)
 
         hostname = socket.gethostname()
