@@ -1,26 +1,26 @@
+# Host.py
+
 import threading
 import time
 import socket
 import cv2
 import queue
-import numpy as np
 
 from Client.Devices.Camera import CameraControl
 from Client.Devices.Microphone import Microphone
 from Client.Devices.AudioOutputDevice import AudioOutput
 from Client.Comms.videoComm import VideoComm
 from Client.Comms.audioComm import AudioServer
-from Client.GUI.VideoDisplay import VideoDisplay
 from Client.Protocol import clientProtocol
 from Client.Comms.ClientServerComm import ClientServer
 from Common.Cipher import AESCipher
+from Client.Logic.av_sync import AVSyncManager
 
 
 class Host:
     def __init__(self, port, meeting_key, comm):
         self.open_clients = {}   # ip -> [socket, port]
         self.msgQ = queue.Queue()
-        self.display = VideoDisplay()
         self.host_comm = comm
         self.AES = AESCipher(meeting_key)
 
@@ -41,13 +41,11 @@ class Host:
         }
 
         self.camera = CameraControl(jpeg_quality=5)
-        self.mic = Microphone(50)
+        self.mic = Microphone(50, rate=16000, channels=1, chunk=320)
         self.AudioOutput = AudioOutput(rate=16000, channels=1)
-
         self.encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), 5]
 
-        # client_ip -> { sync_ts -> {"audio": ..., "video": ...} }
-        self.sync_buffer = {}
+        self.av_sync = AVSyncManager(playout_delay=0.12)
 
         self.meeting_start_time = None
         self.running = True
@@ -81,7 +79,7 @@ class Host:
 
                     self.UI_queue.put(frame.copy())
 
-                    ok, encoded = cv2.imencode('.jpg', frame, self.encode_params)
+                    ok, encoded = cv2.imencode(".jpg", frame, self.encode_params)
                     if ok:
                         frame_bytes = encoded.tobytes()
                         frame_data = clientProtocol.build_video_msg(timestamp, frame_bytes)
@@ -94,90 +92,53 @@ class Host:
         finally:
             self.close()
 
-
-
     def receive_video_loop(self):
-        """
-        Receive incoming guest video into sync_buffer.
-        Works both if frameQ returns:
-        - (decoded_frame, timestamp, addr)
-        - (frame_bytes, timestamp, addr)
-        """
         while self.running:
-            while not self.video_comm.frameQ.empty():
-                try:
-                    video_data, timestamp, addr = self.video_comm.frameQ.get_nowait()
-                except queue.Empty:
-                    break
+            try:
+                while not self.video_comm.frameQ.empty():
+                    try:
+                        video_data, timestamp, addr = self.video_comm.frameQ.get_nowait()
+                    except queue.Empty:
+                        break
 
-                client_ip = addr[0]
-                frame = None
+                    client_ip = addr[0]
 
-                try:
-                    if isinstance(video_data, np.ndarray):
-                        frame = video_data
-                    elif isinstance(video_data, (bytes, bytearray)):
-                        frame = cv2.imdecode(
-                            np.frombuffer(video_data, np.uint8),
-                            cv2.IMREAD_COLOR
-                        )
-                except Exception as e:
-                    print("decode error:", e)
-                    frame = None
+                    if client_ip not in self.open_clients:
+                        self.open_clients[client_ip] = [None, 0]
 
-                if frame is None:
-                    continue
+                    if video_data is None:
+                        continue
 
-                if self.meeting_start_time is None:
-                    continue
+                    self.av_sync.add_video(client_ip, float(timestamp), video_data)
 
-                rel_timestamp = float(timestamp)
-                sync_ts = round(rel_timestamp / 0.05) * 0.05
+                time.sleep(0.005)
 
-                if client_ip not in self.sync_buffer:
-                    self.sync_buffer[client_ip] = {}
-
-                if sync_ts not in self.sync_buffer[client_ip]:
-                    self.sync_buffer[client_ip][sync_ts] = {"audio": None, "video": None}
-
-                self.sync_buffer[client_ip][sync_ts]["video"] = frame
-                self._prune_old_frames(client_ip, keep=20)
-
-            time.sleep(0.005)
+            except Exception as e:
+                print("receive_video_loop error:", e)
+                time.sleep(0.05)
 
     def receive_audio_loop(self):
         while self.running:
-            while not self.audio_comm.audio_queue.empty():
-                try:
-                    audio_bytes, timestamp, sender_ip = self.audio_comm.audio_queue.get_nowait()
-                except queue.Empty:
-                    break
+            try:
+                while not self.audio_comm.audio_queue.empty():
+                    try:
+                        audio_bytes, timestamp, sender_ip = self.audio_comm.audio_queue.get_nowait()
+                    except queue.Empty:
+                        break
 
-                client_ip = sender_ip
+                    self.av_sync.add_audio(sender_ip, float(timestamp), audio_bytes)
 
-                if self.meeting_start_time is None:
-                    continue
+                    try:
+                        msg = clientProtocol.build_audio_msg(float(timestamp), audio_bytes, sender_ip)
+                        self.audio_comm.broadcast_audio(msg, sender_ip)
+                    except Exception as e:
+                        print("audio relay error:", e)
 
-                rel_timestamp = float(timestamp)
-                sync_ts = round(rel_timestamp / 0.05) * 0.05
+                time.sleep(0.005)
 
-                if client_ip not in self.sync_buffer:
-                    self.sync_buffer[client_ip] = {}
-
-                if sync_ts not in self.sync_buffer[client_ip]:
-                    self.sync_buffer[client_ip][sync_ts] = {"video": None, "audio": None}
-
-                self.sync_buffer[client_ip][sync_ts]["audio"] = audio_bytes
-                self._prune_old_frames(client_ip, keep=20)
-
-                # relay to everyone except original sender
-                try:
-                    msg = clientProtocol.build_audio_msg(rel_timestamp, audio_bytes, sender_ip)
-                    self.audio_comm.broadcast_audio(msg, sender_ip)
-                except Exception as e:
-                    print("audio relay error:", e)
-
-            time.sleep(0.005)
+            except Exception as e:
+                print("receive_audio_loop error:", e)
+                time.sleep(0.05)
 
     def host_audio_send_loop(self):
         while self.running:
@@ -195,43 +156,20 @@ class Host:
                 self.audio_comm.broadcast_audio(audio_msg, self.ip)
 
             except Exception as e:
-                print("host audio send error:", e)
+                print("host_audio_send_loop error:", e)
                 time.sleep(0.02)
 
     def playback_loop(self):
-        """
-        Playback synced remote audio/video based on host meeting clock.
-        Audio is played here.
-        Video is pushed to remote_video_queue for the GUI.
-        """
         while self.running:
-            if self.meeting_start_time is None:
-                time.sleep(0.01)
-                continue
+            now = time.monotonic()
 
-            current_time = time.time() - self.meeting_start_time
+            for client_ip in list(self.av_sync.states.keys()):
+                try:
+                    due_audio = self.av_sync.pop_due_audio(client_ip, now)
+                    for _, audio_bytes in due_audio:
+                        self.AudioOutput.play_bytes(audio_bytes)
 
-            for client_ip in list(self.sync_buffer.keys()):
-                if client_ip not in self.sync_buffer:
-                    continue
-
-                timestamps = sorted(self.sync_buffer[client_ip].keys())
-
-                for ts in timestamps:
-                    # small delay buffer helps sync
-                    if ts > current_time - 0.10:
-                        break
-
-                    data = self.sync_buffer[client_ip].get(ts, {})
-                    frame = data.get("video")
-                    audio = data.get("audio")
-
-                    if audio is not None:
-                        try:
-                            self.AudioOutput.play_bytes(audio)
-                        except Exception as e:
-                            print("audio play error:", e)
-
+                    frame = self.av_sync.pop_latest_due_video(client_ip, now)
                     if frame is not None:
                         self.latest_remote_frames[client_ip] = frame
 
@@ -243,25 +181,10 @@ class Host:
 
                         self.remote_video_queue.put((client_ip, frame))
 
-                    if ts in self.sync_buffer[client_ip]:
-                        del self.sync_buffer[client_ip][ts]
+                except Exception as e:
+                    print("playback_loop error:", e)
 
-            time.sleep(0.01)
-
-    def _prune_old_frames(self, client_ip, keep=20):
-        if client_ip not in self.sync_buffer:
-            return
-
-        timestamps = self.sync_buffer[client_ip]
-        if len(timestamps) <= keep:
-            return
-
-        latest = sorted(timestamps.keys(), reverse=True)[:keep]
-        latest = set(latest)
-
-        for ts in list(timestamps.keys()):
-            if ts not in latest:
-                del timestamps[ts]
+            time.sleep(0.005)
 
     def handle_msgs_from_client_logic(self, opcode, data):
         try:
@@ -307,37 +230,19 @@ class Host:
                 except Exception as e:
                     print(f"Error in command {opcode}: {e}")
 
-    def handle_video(self, client_ip, username, timestamp, frame):
-        sync_ts = round(float(timestamp) / 0.05) * 0.05
-
-        if client_ip not in self.sync_buffer:
-            self.sync_buffer[client_ip] = {}
-
-        if sync_ts not in self.sync_buffer[client_ip]:
-            self.sync_buffer[client_ip][sync_ts] = {"audio": None, "video": None}
-
-        self.sync_buffer[client_ip][sync_ts]["video"] = frame
-        self._prune_old_frames(client_ip, keep=20)
-
     def handle_disconnect(self, data):
         ip = data[0] if len(data) > 0 else ""
         username = data[1] if len(data) > 1 else ip
 
         print(username, "left the call")
 
-        try:
-            self.display.remove_user(ip, username)
-        except Exception:
-            pass
-
         if ip in self.open_clients:
             del self.open_clients[ip]
 
-        if ip in self.sync_buffer:
-            del self.sync_buffer[ip]
-
         if ip in self.latest_remote_frames:
             del self.latest_remote_frames[ip]
+
+        self.av_sync.remove_sender(ip)
 
         try:
             self.video_comm.remove_user(ip, 0)
@@ -347,6 +252,7 @@ class Host:
     def handle_join(self, data):
         ip = data[0]
         port = int(data[1])
+
         if ip not in self.open_clients:
             self.open_clients[ip] = [None, port]
         else:
@@ -378,31 +284,33 @@ class Host:
         self.running = False
 
         try:
-            if hasattr(self, 'camera'):
-                self.camera.stop()
+            self.camera.stop()
         except Exception as e:
             print("camera stop error:", e)
 
         try:
-            if hasattr(self, 'mic'):
-                self.mic.stop()
+            self.mic.stop()
         except Exception as e:
             print("mic stop error:", e)
 
         try:
-            if hasattr(self, 'video_comm'):
-                self.video_comm.close()
+            self.AudioOutput.stop()
+        except Exception as e:
+            print("audio output stop error:", e)
+
+        try:
+            self.video_comm.close()
         except Exception as e:
             print("video close error:", e)
 
         try:
-            if hasattr(self, 'audio_comm') and hasattr(self.audio_comm, 'close'):
+            if hasattr(self.audio_comm, "close"):
                 self.audio_comm.close()
         except Exception as e:
             print("audio close error:", e)
 
         try:
-            if hasattr(self, 'host_server') and hasattr(self.host_server, 'close'):
+            if hasattr(self.host_server, "close"):
                 self.host_server.close()
         except Exception as e:
             print("host server close error:", e)

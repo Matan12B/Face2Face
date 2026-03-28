@@ -1,7 +1,8 @@
+# audioComm.py
+
 import socket
 import threading
 import queue
-import time
 import select
 
 from Client.Protocol import clientProtocol
@@ -9,10 +10,6 @@ from Client.Protocol import clientProtocol
 
 class AudioClient:
     def __init__(self, server_ip, AES, port=3000):
-        """
-        Audio TCP client.
-        Uses the already-shared meeting AES key.
-        """
         self.server_ip = server_ip
         self.port = port
         self.cipher = AES
@@ -28,10 +25,6 @@ class AudioClient:
         threading.Thread(target=self._main_loop, daemon=True).start()
 
     def _recv_exact(self, size):
-        """
-        Receive exactly size bytes from the socket.
-        Returns None if the socket closes.
-        """
         data = b""
         while len(data) < size and self.running and self.open:
             try:
@@ -48,9 +41,6 @@ class AudioClient:
         return data
 
     def _main_loop(self):
-        """
-        Connect and keep receiving audio messages.
-        """
         try:
             self.my_socket.connect((self.server_ip, self.port))
         except Exception as e:
@@ -95,10 +85,6 @@ class AudioClient:
                 break
 
     def send_audio(self, audio_chunk):
-        """
-        Send already-built audio protocol message.
-        Returns True on success.
-        """
         if not self.cipher or not self.open:
             return False
 
@@ -113,12 +99,6 @@ class AudioClient:
             return False
 
     def _close_client(self):
-        """
-        Internal socket close.
-        """
-        if not self.open and not self.running:
-            return
-
         self.open = False
 
         try:
@@ -132,19 +112,12 @@ class AudioClient:
             print(f"error closing audio client socket: {e}")
 
     def close_client(self):
-        """
-        Public close.
-        """
         self.running = False
         self._close_client()
 
 
 class AudioServer:
     def __init__(self, port=3000, AES=None, open_clients=None):
-        """
-        Audio TCP server.
-        Receives audio from participants and allows broadcast/send.
-        """
         self.port = port
         self.AES = AES
         self.open_clients = open_clients if open_clients is not None else {}
@@ -158,19 +131,14 @@ class AudioServer:
 
         self.audio_queue = queue.Queue()
 
-        # audio only
-        self.audio_clients = {}      # ip -> socket
-        self.socket_to_ip = {}       # socket -> ip
+        self.audio_clients = {}
+        self.socket_to_ip = {}
 
         self.running = True
 
         threading.Thread(target=self._main_loop, daemon=True).start()
 
     def _recv_exact(self, sock, size):
-        """
-        Receive exactly size bytes from a client socket.
-        Returns None if the socket closes.
-        """
         data = b""
         while len(data) < size and self.running:
             try:
@@ -187,9 +155,6 @@ class AudioServer:
         return data
 
     def _main_loop(self):
-        """
-        Accept new audio clients and receive audio messages.
-        """
         print("audio server listen on port:", self.port)
 
         while self.running:
@@ -242,8 +207,9 @@ class AudioServer:
 
                         if len(header) == 3:
                             timestamp = float(header[1])
-                            sender_ip = header[2]
-                            self.audio_queue.put((audio, timestamp, sender_ip))
+
+                            # trust real socket IP, not the header IP
+                            self.audio_queue.put((audio, timestamp, client_ip))
                         else:
                             print("incorrect audio msg header on server")
 
@@ -252,9 +218,6 @@ class AudioServer:
                         self.close_client(client_ip)
 
     def send_audio(self, client_ip, audio_msg):
-        """
-        Send already-built audio protocol message to one client.
-        """
         if client_ip not in self.audio_clients or not self.AES:
             return
 
@@ -269,17 +232,11 @@ class AudioServer:
             self.close_client(client_ip)
 
     def broadcast_audio(self, audio_msg, sender_ip):
-        """
-        Broadcast already-built audio protocol message to everyone except sender.
-        """
         for ip in list(self.audio_clients.keys()):
             if ip != sender_ip:
                 self.send_audio(ip, audio_msg)
 
     def close_client(self, client_ip):
-        """
-        Close one audio client safely.
-        """
         try:
             if client_ip not in self.audio_clients:
                 return
@@ -303,9 +260,6 @@ class AudioServer:
             print(f"error closing audio client {client_ip}: {e}")
 
     def close(self):
-        """
-        Close whole audio server.
-        """
         self.running = False
 
         for ip in list(self.audio_clients.keys()):

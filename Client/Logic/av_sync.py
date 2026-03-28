@@ -1,0 +1,69 @@
+# av_sync.py
+
+import time
+import heapq
+
+
+class AVSyncManager:
+    def __init__(self, playout_delay=0.12):
+        self.playout_delay = playout_delay
+        self.states = {}
+
+    def _ensure_state(self, sender_ip, sender_ts):
+        if sender_ip not in self.states:
+            now = time.monotonic()
+            self.states[sender_ip] = {
+                "first_sender_ts": float(sender_ts),
+                "playout_base": now + self.playout_delay,
+                "audio_heap": [],   # (target_time, sender_ts, audio_bytes)
+                "video_heap": [],   # (target_time, sender_ts, frame)
+                "last_video_frame": None
+            }
+        return self.states[sender_ip]
+
+    def add_audio(self, sender_ip, sender_ts, audio_bytes):
+        state = self._ensure_state(sender_ip, sender_ts)
+        target_time = state["playout_base"] + (float(sender_ts) - state["first_sender_ts"])
+        heapq.heappush(state["audio_heap"], (target_time, float(sender_ts), audio_bytes))
+
+    def add_video(self, sender_ip, sender_ts, frame):
+        state = self._ensure_state(sender_ip, sender_ts)
+        target_time = state["playout_base"] + (float(sender_ts) - state["first_sender_ts"])
+        heapq.heappush(state["video_heap"], (target_time, float(sender_ts), frame))
+
+    def pop_due_audio(self, sender_ip, now=None):
+        if now is None:
+            now = time.monotonic()
+
+        state = self.states.get(sender_ip)
+        if not state:
+            return []
+
+        due_audio = []
+        while state["audio_heap"] and state["audio_heap"][0][0] <= now:
+            _, sender_ts, audio_bytes = heapq.heappop(state["audio_heap"])
+            due_audio.append((sender_ts, audio_bytes))
+
+        return due_audio
+
+    def pop_latest_due_video(self, sender_ip, now=None):
+        if now is None:
+            now = time.monotonic()
+
+        state = self.states.get(sender_ip)
+        if not state:
+            return None
+
+        latest_frame = None
+        while state["video_heap"] and state["video_heap"][0][0] <= now:
+            _, _, frame = heapq.heappop(state["video_heap"])
+            latest_frame = frame
+
+        if latest_frame is not None:
+            state["last_video_frame"] = latest_frame
+
+        return latest_frame
+
+    def remove_sender(self, sender_ip):
+        if sender_ip in self.states:
+            del self.states[sender_ip]
