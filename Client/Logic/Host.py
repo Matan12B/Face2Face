@@ -60,7 +60,7 @@ class Host:
 
         threading.Thread(target=self.handle_msgs_from_guests, daemon=True).start()
         threading.Thread(target=self.receive_video_loop, daemon=True).start()
-        threading.Thread(target=self.receive_audio_loop, daemon=True).start()
+        # threading.Thread(target=self.receive_audio_loop, daemon=True).start()
 
         self.meeting_start_time = time.time()
 
@@ -87,11 +87,11 @@ class Host:
                             frame_data = clientProtocol.build_video_msg(timestamp, frame_bytes)
                             self.video_comm.send_frame(frame_data)
 
-                    if self.mic.running:
-                        audio_chunk = self.mic.record()
-                        if audio_chunk:
-                            audio_msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
-                            self.audio_comm.broadcast_audio(audio_msg, self.ip)
+                    # if self.mic.running:
+                    #     audio_chunk = self.mic.record()
+                    #     if audio_chunk:
+                    #         audio_msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
+                    #         self.audio_comm.broadcast_audio(audio_msg, self.ip)
 
                 time.sleep(0.01)
 
@@ -99,6 +99,8 @@ class Host:
             print("Call interrupted.")
         finally:
             self.close()
+
+
 
     def receive_video_loop(self):
         """
@@ -325,9 +327,6 @@ class Host:
     def handle_join(self, data):
         ip = data[0]
         port = int(data[1])
-
-        print("adding", ip, "to open clients")
-
         if ip not in self.open_clients:
             self.open_clients[ip] = [None, port]
         else:
@@ -345,7 +344,6 @@ class Host:
             self.send_meeting_start_time(ip)
 
     def send_meeting_start_time(self, ip):
-        print("sending start time")
         msg = clientProtocol.build_meeting_start_time(self.meeting_start_time)
         self.host_server.send_msg(ip, msg)
 

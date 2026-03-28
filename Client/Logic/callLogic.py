@@ -58,7 +58,7 @@ class CallLogic:
 
         self.meeting_start_time = None
         self.running = True
-
+        self.send_queue = None
         # separate audio playback queue so audio won't block video receive
         self.audio_play_queue = queue.Queue()
 
@@ -78,34 +78,35 @@ class CallLogic:
             while self.running:
                 frame = self.camera.get_frame()
 
-                # local preview should always work
                 if frame is not None:
+                    frame = frame.copy()
+
+                    # UI preview
                     while self.UI_queue.qsize() >= 1:
                         try:
                             self.UI_queue.get_nowait()
                         except queue.Empty:
                             break
 
-                    self.UI_queue.put(frame.copy())
+                    self.UI_queue.put(frame)
 
-                # send only after meeting start time exists
-                if self.meeting_start_time is not None:
-                    timestamp = time.time() - self.meeting_start_time
+                    # only send if meeting started
+                    if self.meeting_start_time is not None:
+                        timestamp = time.time() - self.meeting_start_time
+                        while self.send_queue.qsize() > 2:
+                            try:
+                                self.send_queue.get_nowait()
+                            except queue.Empty:
+                                break
+                        self.send_queue.put((frame, timestamp))
 
-                    if frame is not None:
-                        ok, encoded = cv2.imencode('.jpg', frame, self.encode_params)
-                        if ok:
-                            frame_bytes = encoded.tobytes()
-                            frame_data = clientProtocol.build_video_msg(timestamp, frame_bytes)
-                            self.video_comm.send_frame(frame_data)
-                        else:
-                            print("failed to encode local frame")
 
-                    if self.mic.running:
-                        audio_chunk = self.mic.record()
-                        if audio_chunk:
-                            audio_msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
-                            self.audio_comm.send_audio(audio_msg)
+
+                        if self.mic.running:
+                            audio_chunk = self.mic.record()
+                            if audio_chunk:
+                                audio_msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
+                                self.audio_comm.send_audio(audio_msg)
 
                 time.sleep(0.01)
 
@@ -113,6 +114,31 @@ class CallLogic:
             print("Guest call interrupted.")
         finally:
             self.cleanup()
+
+    def send_loop(self):
+        while self.running:
+            try:
+                frame, timestamp = self.send_queue.get(timeout=1)
+
+                ok, encoded = cv2.imencode('.jpg', frame, self.encode_params)
+                if ok:
+                    frame_bytes = encoded.tobytes()
+                    frame_data = clientProtocol.build_video_msg(timestamp, frame_bytes)
+                    self.video_comm.send_frame(frame_data)
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print("send_loop error:", e)
+
+    def audio_send_loop(self):
+        while self.running:
+            if self.mic.running and self.meeting_start_time is not None:
+                audio_chunk = self.mic.record()
+                if audio_chunk:
+                    timestamp = time.time() - self.meeting_start_time
+                    msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
+                    self.audio_comm.send_audio(msg)
+
 
     def receive_video_loop(self):
         """
