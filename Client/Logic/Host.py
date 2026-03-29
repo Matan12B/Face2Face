@@ -65,7 +65,6 @@ class Host:
         self.camera.start()
         self.mic.start()
         self.mic.unmute()
-
         self.meeting_start_time = time.time()
 
         threading.Thread(target=self.handle_msgs_from_guests, daemon=True).start()
@@ -85,9 +84,7 @@ class Host:
                             self.UI_queue.get_nowait()
                         except queue.Empty:
                             break
-
                     self.UI_queue.put(frame.copy())
-
                     # send only at controlled FPS
                     if now - self.last_video_send_time >= self.video_send_interval:
                         self.last_video_send_time = now
@@ -98,9 +95,7 @@ class Host:
                             frame_bytes = encoded.tobytes()
                             frame_data = clientProtocol.build_video_msg(timestamp, frame_bytes)
                             self.video_comm.send_frame(frame_data)
-
                 time.sleep(0.005)
-
         except KeyboardInterrupt:
             print("Call interrupted.")
         finally:
@@ -139,9 +134,7 @@ class Host:
                         audio_bytes, timestamp, sender_ip = self.audio_comm.audio_queue.get_nowait()
                     except queue.Empty:
                         break
-
                     self.av_sync.add_audio(sender_ip, float(timestamp), audio_bytes)
-
                     try:
                         msg = clientProtocol.build_audio_msg(float(timestamp), audio_bytes, sender_ip)
                         self.audio_comm.broadcast_audio(msg, sender_ip)

@@ -301,6 +301,9 @@ class CallFrame(wx.Frame):
                 break
 
     def _draw_remote_panels(self):
+        """
+
+        """
         connected_clients = self._get_connected_remote_clients()
         panel_idx = 1
         now = time.time()
