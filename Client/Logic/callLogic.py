@@ -66,6 +66,8 @@ class CallLogic:
         self.ip = get_ip_by_interface("Ethernet 4")
         if not self.ip:
             self.ip = get_fallback_ip(host_ip)
+
+        print("my ip is", self.ip)
         self.UI_queue = queue.Queue()
         self.remote_video_queue = queue.Queue()
         self.latest_remote_frames = {}
