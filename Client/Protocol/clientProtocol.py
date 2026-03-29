@@ -1,5 +1,5 @@
 import struct
-import ast
+import json
 
 def unpack(msg):
     """
@@ -12,7 +12,7 @@ def unpack(msg):
         data = data[0]
     print(split)
     if opcode == "cc" and data:
-        return opcode, ast.literal_eval(data[0])
+        return opcode, json.loads(data[0])
     return opcode, data
 
 def unpack_file(msg):

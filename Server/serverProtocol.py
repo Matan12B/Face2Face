@@ -1,3 +1,4 @@
+import json
 
 def unpack(msg):
     """
@@ -74,7 +75,7 @@ def build_clients_connected(existing_clients):
     """
     build a message to send to a new client with all the currently connected clients to a meeting
     """
-    return f"cc^#^{existing_clients}"
+    return f"cc^#^{json.dumps(existing_clients)}"
 
 
 
