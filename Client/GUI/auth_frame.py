@@ -1,3 +1,5 @@
+# auth_frame.py
+
 import wx
 from home_frame import HomeFrame
 
@@ -26,8 +28,11 @@ class AuthFrame(wx.Frame):
         mode_sizer.Add(self.signup_mode_btn, 1, wx.LEFT, 5)
 
         # form
-        self.username_box = wx.TextCtrl(panel)
-        self.password_box = wx.TextCtrl(panel, style=wx.TE_PASSWORD)
+        self.username_box = wx.TextCtrl(panel, style=wx.TE_PROCESS_ENTER)
+        self.password_box = wx.TextCtrl(
+            panel,
+            style=wx.TE_PASSWORD | wx.TE_PROCESS_ENTER
+        )
 
         self.submit_btn = wx.Button(panel, label="Login")
         self.status_text = wx.StaticText(panel, label="Choose Login or Sign Up")
