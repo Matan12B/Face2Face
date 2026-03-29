@@ -1,6 +1,7 @@
+# call_frame.py
+
 import wx
 import cv2
-import numpy as np
 import threading
 import queue
 import time
@@ -55,19 +56,25 @@ class VideoPanel(wx.Panel):
         Show black panel.
         :return:
         """
+        already_black = self.show_black and self.current_bitmap is None
         self.current_bitmap = None
         self.show_black = True
-        self.Refresh(False)
+
+        if not already_black:
+            self.Refresh(False)
 
     def clear_panel(self):
         """
         Show empty panel.
         :return:
         """
+        already_clear = (self.current_bitmap is None) and (not self.show_black) and (self.label_text == "")
         self.current_bitmap = None
         self.show_black = False
         self.label_text = ""
-        self.Refresh(False)
+
+        if not already_clear:
+            self.Refresh(False)
 
     def set_label(self, text):
         """
@@ -75,7 +82,12 @@ class VideoPanel(wx.Panel):
         :param text:
         :return:
         """
-        self.label_text = text if text else ""
+        text = text if text else ""
+
+        if text == self.label_text:
+            return
+
+        self.label_text = text
         self.Refresh(False)
 
     def on_paint(self, event):
@@ -237,6 +249,7 @@ class CallFrame(wx.Frame):
         self.cam_btn.Bind(wx.EVT_BUTTON, self.toggle_camera)
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.copy_code_btn.Bind(wx.EVT_BUTTON, self.copy_meeting_code)
+
         self.video_panels[0].set_black()
         for i in range(1, 4):
             self.video_panels[i].clear_panel()
@@ -259,6 +272,9 @@ class CallFrame(wx.Frame):
         self._draw_remote_panels()
 
     def _update_self_frame(self):
+        """
+        Pull newest self frame from call logic.
+        """
         newest_self_frame = None
 
         if hasattr(self.call_logic, "UI_queue"):
@@ -291,6 +307,11 @@ class CallFrame(wx.Frame):
         while True:
             try:
                 client_ip, frame = self.call_logic.remote_video_queue.get_nowait()
+
+                # safety: do not show self as remote
+                if hasattr(self.call_logic, "ip") and client_ip == self.call_logic.ip:
+                    continue
+
                 if frame is not None:
                     self.remote_frames[client_ip] = frame
                     self.remote_frame_times[client_ip] = time.time()
@@ -302,7 +323,7 @@ class CallFrame(wx.Frame):
 
     def _draw_remote_panels(self):
         """
-
+        Draw remote users.
         """
         connected_clients = self._get_connected_remote_clients()
         panel_idx = 1
@@ -315,7 +336,7 @@ class CallFrame(wx.Frame):
             frame = self.remote_frames.get(client_ip)
             last_time = self.remote_frame_times.get(client_ip, 0)
 
-            display_name = self.remote_usernames.get(client_ip, client_ip)
+            display_name = self._get_display_name_for_ip(client_ip)
             self.video_panels[panel_idx].set_label(display_name)
 
             if frame is not None and (now - last_time) <= self.remote_timeout:
@@ -328,6 +349,28 @@ class CallFrame(wx.Frame):
         for i in range(panel_idx, len(self.video_panels)):
             self.video_panels[i].clear_panel()
 
+    def _get_display_name_for_ip(self, client_ip):
+        """
+        Return a display name for an ip.
+        """
+        if client_ip in self.remote_usernames:
+            return self.remote_usernames[client_ip]
+
+        try:
+            if hasattr(self.call_logic, "open_clients") and client_ip in self.call_logic.open_clients:
+                value = self.call_logic.open_clients[client_ip]
+
+                # host side format can be [socket, port, username]
+                if isinstance(value, list) and len(value) >= 3:
+                    username = value[2]
+                    if username:
+                        self.remote_usernames[client_ip] = username
+                        return username
+        except Exception:
+            pass
+
+        return client_ip
+
     def _get_connected_remote_clients(self):
         """
         Return connected clients except self.
@@ -338,10 +381,18 @@ class CallFrame(wx.Frame):
             return connected_clients
 
         try:
+            seen = set()
+
             for client_ip in self.call_logic.open_clients.keys():
                 if hasattr(self.call_logic, "ip") and client_ip == self.call_logic.ip:
                     continue
+
+                if client_ip in seen:
+                    continue
+
+                seen.add(client_ip)
                 connected_clients.append(client_ip)
+
         except Exception as e:
             print("connected clients error:", e)
 
@@ -424,7 +475,7 @@ class CallFrame(wx.Frame):
 
         try:
             if self.home_frame:
-                if hasattr(self.home_frame.client, 'role'):
+                if hasattr(self.home_frame.client, "role"):
                     self.home_frame.client.role = None
                 self.home_frame.Show()
 

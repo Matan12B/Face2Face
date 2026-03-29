@@ -217,16 +217,7 @@ class Host:
                 print("unpack error:", e)
                 continue
 
-            if opcode == "hj":
-                if isinstance(data, list):
-                    if len(data) == 1:
-                        data = [guest_ip, data[0]]
-                    elif len(data) >= 2:
-                        data[0] = guest_ip
-                else:
-                    data = [guest_ip, data]
-
-            elif opcode == "hd":
+            if opcode == "hd":
                 if isinstance(data, list):
                     if len(data) == 0:
                         data = [guest_ip]
@@ -264,6 +255,7 @@ class Host:
         ip = data[0]
         port = int(data[1])
         client_username = data[3]
+        print(data)
         if ip == self.ip:
             return
 
