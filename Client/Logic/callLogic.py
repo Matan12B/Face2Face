@@ -51,7 +51,7 @@ def get_fallback_ip(host_ip):
         s.close()
 
 class CallLogic:
-    def __init__(self, port, meeting_key, comm, host_ip, meeting_code):
+    def __init__(self, port, meeting_key, comm, host_ip, meeting_code, username):
         self.open_clients = {}   # ip -> port, username
         self.msgs_from_host = queue.Queue()
         self.comm_with_server = comm
@@ -62,11 +62,11 @@ class CallLogic:
         self.audio_comm = AudioClient(host_ip, self.AES)
         # ip = [port, username]
         self.host_ip = host_ip
-
+        self.username = username
         self.ip = get_ip_by_interface("Ethernet 4")
         if not self.ip:
             self.ip = get_fallback_ip(host_ip)
-
+        self.open_clients[self.host_ip] = {"username": "Host"}
         print("my ip is", self.ip)
         self.UI_queue = queue.Queue()
         self.remote_video_queue = queue.Queue()
@@ -191,6 +191,7 @@ class CallLogic:
                 print("audio_send_loop error:", e)
                 time.sleep(0.02)
 
+
     def receive_video_loop(self):
         while self.running:
             try:
@@ -199,17 +200,13 @@ class CallLogic:
                         video_data, timestamp, addr = self.video_comm.frameQ.get_nowait()
                     except queue.Empty:
                         break
-
                     sender_ip = addr[0]
-                    if sender_ip == self.ip:
+                    if sender_ip == self.ip or video_data is None:
                         continue
                     if sender_ip not in self.open_clients:
-                        self.open_clients[sender_ip] = self.open_clients.get(self.host_ip, 0)
-                    if video_data is None:
-                        continue
+                        self.open_clients[sender_ip] = {"username": sender_ip}
                     self.av_sync.add_video(sender_ip, float(timestamp), video_data)
                 time.sleep(0.005)
-
             except Exception as e:
                 print("receive_video_loop error:", e)
                 time.sleep(0.05)
@@ -222,8 +219,10 @@ class CallLogic:
                         audio_bytes, timestamp, sender_ip = self.audio_comm.audio_queue.get_nowait()
                     except queue.Empty:
                         break
+                    if sender_ip == self.ip:
+                        continue
                     if sender_ip not in self.open_clients:
-                        self.open_clients[sender_ip] = self.open_clients.get(self.host_ip, 0)
+                        self.open_clients[sender_ip] = {"username": sender_ip}
                     self.av_sync.add_audio(sender_ip, float(timestamp), audio_bytes)
                 time.sleep(0.001)
             except Exception as e:
@@ -307,16 +306,19 @@ class CallLogic:
         """
         get host username
         """
-        self.open_clients[self.host_ip] = username
+        if self.host_ip not in self.open_clients or not isinstance(self.open_clients[self.host_ip], dict):
+            self.open_clients[self.host_ip] = {}
+
+        self.open_clients[self.host_ip]["username"] = username
 
     def get_connected_clients(self, connected_clients: dict):
+        """
+        get clients currently in the meeting
+        """
         if not isinstance(connected_clients, dict):
             return
-
         for ip, username in connected_clients.items():
-            if ip == self.ip:
-                continue
-            if ip == self.host_ip:
+            if ip == self.ip or ip == self.host_ip:
                 continue
             self.open_clients[ip] = {"username": username}
 
@@ -343,16 +345,21 @@ class CallLogic:
         self.av_sync.add_audio(sender_ip, timestamp, audio)
 
     def handle_join(self, data):
+        """
+
+        :param data:
+        :return:
+        """
         try:
             ip = data[0]
             username = data[1]
         except Exception as e:
             print("join parse error:", e)
             return
-        print(f"{ip} joined the call")
         if ip == self.ip:
             return
-        self.open_clients[ip] = username
+
+        self.open_clients[ip] = {"username": username}
 
     def force_disconnect(self):
         """

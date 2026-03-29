@@ -71,10 +71,23 @@ class Client:
         meeting_key = data[2]
 
         if role == "host":
-            self.role = Host(port, meeting_key, self.comm, self.meeting_code)
+            self.role = Host(
+                port,
+                meeting_key,
+                self.comm,
+                self.meeting_code,
+                self.username
+            )
         elif role == "guest" and len(data) == 4:
             host_ip = data[3]
-            self.role = CallLogic(port, meeting_key, self.comm, host_ip, self.meeting_code)
+            self.role = CallLogic(
+                port,
+                meeting_key,
+                self.comm,
+                host_ip,
+                self.meeting_code,
+                self.username
+            )
         else:
             print("Invalid role")
 

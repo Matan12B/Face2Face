@@ -3,6 +3,7 @@ import time
 import socket
 import cv2
 import queue
+import psutil
 
 from Client.Devices.Camera import CameraControl
 from Client.Devices.Microphone import Microphone
@@ -14,9 +15,36 @@ from Client.Comms.ClientServerComm import ClientServer
 from Common.Cipher import AESCipher
 from Client.Logic.av_sync import AVSyncManager
 
+def get_ip_by_interface(interface_name="Ethernet 4"):
+    """
+    Return the IPv4 address of the given network interface.
+    :param interface_name:
+    :return:
+    """
+    addrs = psutil.net_if_addrs()
 
+    if interface_name not in addrs:
+        return None
+
+    for addr in addrs[interface_name]:
+        if addr.family == socket.AF_INET:
+            return addr.address
+
+    return None
+
+
+def get_fallback_ip():
+    """
+    Return fallback local IPv4.
+    :return:
+    """
+    hostname = socket.gethostname()
+    try:
+        return socket.gethostbyname(hostname)
+    except Exception:
+        return "127.0.0.1"
 class Host:
-    def __init__(self, port, meeting_key, comm, meeting_code):
+    def __init__(self, port, meeting_key, comm, meeting_code, username):
         self.open_clients = {}   # ip -> [socket, port]
         self.msgQ = queue.Queue()
         self.host_comm = comm
@@ -29,6 +57,10 @@ class Host:
 
         hostname = socket.gethostname()
         self.ip = socket.gethostbyname(hostname)
+        self.username = username
+        self.ip = get_ip_by_interface("Ethernet 4")
+        if not self.ip:
+            self.ip = get_fallback_ip()
 
         self.UI_queue = queue.Queue()
         self.remote_video_queue = queue.Queue()
@@ -44,16 +76,11 @@ class Host:
         self.mic = Microphone(50, rate=16000, channels=1, chunk=160)
         self.AudioOutput = AudioOutput(rate=16000, channels=1)
         self.av_sync = AVSyncManager(playout_delay=0.03)
-
         self.video_send_interval = 1 / 12.0
         self.last_video_enqueue_time = 0.0
         self.last_video_send_time = 0.0
-
         self.meeting_start_time = None
         self.running = True
-
-    # Host.py
-    # replace start() with this
 
     def start(self):
         print("Starting call...")
@@ -250,15 +277,16 @@ class Host:
         ip = data[0]
         port = int(data[1])
         client_username = data[3]
-        print(data)
+
         if ip == self.ip:
             return
 
         if ip not in self.open_clients:
             self.open_clients[ip] = [None, port, client_username]
         else:
-            if isinstance(self.open_clients[ip], list) and len(self.open_clients[ip]) >= 2:
+            if isinstance(self.open_clients[ip], list) and len(self.open_clients[ip]) >= 3:
                 self.open_clients[ip][1] = port
+                self.open_clients[ip][2] = client_username
             else:
                 self.open_clients[ip] = [None, port, client_username]
 
@@ -269,7 +297,8 @@ class Host:
 
         if self.running and ip in self.open_clients:
             self.send_meeting_start_time(ip)
-            self.send_username(ip, self.host_comm.username)
+            self.send_username(ip, self.username)
+            self.send_connected_clients(ip)
 
     def send_meeting_start_time(self, ip):
         """
@@ -329,3 +358,20 @@ class Host:
             print("host server close error:", e)
 
         time.sleep(0.1)
+
+    def send_connected_clients(self, target_ip):
+        """
+        Send all currently connected clients to the new guest.
+        :param target_ip:
+        :return:
+        """
+        clients_dict = {}
+
+        for ip, value in self.open_clients.items():
+            if ip == target_ip or ip == self.ip:
+                continue
+            if isinstance(value, list) and len(value) >= 3:
+                clients_dict[ip] = value[2]
+
+        msg = clientProtocol.build_connected_clients(clients_dict)
+        self.host_server.send_msg(target_ip, msg)

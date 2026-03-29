@@ -351,24 +351,19 @@ class CallFrame(wx.Frame):
 
     def _get_display_name_for_ip(self, client_ip):
         """
-        Return a display name for an ip.
+        Return display name for ip.
         """
-        if client_ip in self.remote_usernames:
-            return self.remote_usernames[client_ip]
-
         try:
             if hasattr(self.call_logic, "open_clients") and client_ip in self.call_logic.open_clients:
                 value = self.call_logic.open_clients[client_ip]
-
-                # host side format can be [socket, port, username]
+                if isinstance(value, dict):
+                    return value.get("username", client_ip)
                 if isinstance(value, list) and len(value) >= 3:
-                    username = value[2]
-                    if username:
-                        self.remote_usernames[client_ip] = username
-                        return username
+                    return value[2]
+                if isinstance(value, str):
+                    return value
         except Exception:
             pass
-
         return client_ip
 
     def _get_connected_remote_clients(self):

@@ -3,17 +3,28 @@ import json
 
 def unpack(msg):
     """
-    Return opcode and list of parameters from the msg
+    Return opcode and params from the msg
     """
     split = msg.split("^#^")
     opcode = split[0]
     data = split[1:]
-    if len(data) == 1:
-        data = data[0]
-    print(split)
     if opcode == "cc" and data:
-        return opcode, json.loads(data)
+        return opcode, json.loads(data[0])
+    if len(data) == 1:
+        return opcode, data[0]
     return opcode, data
+
+def build_username_msg(username):
+    """
+    build host username msg
+    """
+    return f"gh^#^{username}"
+
+def build_connected_clients(clients_dict):
+    """
+    build connected clients dict msg
+    """
+    return f"cc^#^{json.dumps(clients_dict)}"
 
 def unpack_file(msg):
     """
@@ -113,4 +124,15 @@ def build_meeting_start_time(meeting_start):
     build meeting start time to send to guests
     """
     return f"gmst^#^{meeting_start}"
+
+def build_connected_clients(clients_dict):
+    """
+
+    :param clients_dict:
+    :return:
+    """
+    return f"cc^#^{json.dumps(clients_dict)}"
+
+
+
 
