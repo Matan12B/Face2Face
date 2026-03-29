@@ -68,17 +68,14 @@ class Client:
         """
         Initialize the meeting role
         """
-        host_ip = ""
         role = data[0]
         port = int(data[1])
         meeting_key = data[2]
 
-        if role == "guest" and len(data) == 4:
-            host_ip = data[3]
-
         if role == "host":
             self.role = Host(port, meeting_key, self.comm, self.meeting_code)
-        elif role == "guest":
+        elif role == "guest" and len(data) == 4:
+            host_ip = data[3]
             self.role = CallLogic(port, meeting_key, self.comm, host_ip, self.meeting_code)
         else:
             print("Invalid role")
@@ -103,12 +100,15 @@ class Client:
         """
         save login status
         """
+        print("log in status", status)
         self.active = status
 
     def get_signup_status(self, status):
         """
         save signup status
         """
+        print("signup status", status)
+
         self.active = status
 
     def log_in(self, username, password):

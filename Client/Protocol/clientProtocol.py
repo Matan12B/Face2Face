@@ -8,6 +8,9 @@ def unpack(msg):
     split = msg.split("^#^")
     opcode = split[0]
     data = split[1:]
+    if len(data) == 1:
+        data = data[0]
+    print(split)
     if opcode == "cc" and data:
         return opcode, ast.literal_eval(data[0])
     return opcode, data

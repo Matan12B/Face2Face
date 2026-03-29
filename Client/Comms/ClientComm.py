@@ -52,7 +52,6 @@ class ClientComm:
                     continue
 
                 if decrypt_msg:
-                    print("recvd msg from server")
                     self.recvQ.put(decrypt_msg)
 
     def _close_client(self):
