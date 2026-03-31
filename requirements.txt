@@ -1,0 +1,6 @@
+wxPython~=4.2.5
+opencv-python~=4.13.0.92
+numpy~=2.4.4
+sounddevice~=0.5.5
+psutil
+pycryptodome

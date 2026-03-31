@@ -1,5 +1,3 @@
-# callParticipant.py
-
 import threading
 import time
 import cv2
@@ -76,7 +74,7 @@ class CallParticipant:
         self.ip = get_ip_by_interface("Ethernet 4")
         if not self.ip:
             self.ip = get_fallback_ip(fallback_target_ip)
-
+        print(f"Local IP: {self.ip}")
         self.UI_queue = queue.Queue()
         self.remote_video_queue = queue.Queue()
         self.latest_remote_frames = {}
