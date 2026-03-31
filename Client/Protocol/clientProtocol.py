@@ -113,7 +113,7 @@ def build_open_meeting_msg():
     """
     Return a open meeting msg built in the protocol structure
     """
-    return "om"
+    return "om^#^"
 
 
 def build_meeting_start_time(meeting_start):

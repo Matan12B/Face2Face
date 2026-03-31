@@ -52,12 +52,15 @@ class ClientComm:
             connect = True
         except Exception as e:
             self.error = f"connection failed: {e}"
+            self.connected.set()
         if connect:
             self._exchange_key()
             if not self.cipher:
                 self.error = "key exchange failed"
+                self.connected.set()
             else:
                 self.running = True
+                self.connected.set()
         while self.running:
             try:
                 length_bytes = self._recv_exact(10)
