@@ -1,6 +1,18 @@
-wxPython~=4.2.5
-opencv-python~=4.13.0.92
-numpy~=2.4.4
-sounddevice~=0.5.5
-psutil
-pycryptodome
+# MatMeet dependencies
+# Install with: pip install -r requirements.txt
+
+# Video / image processing
+opencv-python>=4.5
+
+# Audio I/O
+sounddevice>=0.4
+numpy>=1.21
+
+# GUI
+wxPython>=4.2
+
+# System / network
+psutil>=5.9
+
+# Encryption  (imports as 'Crypto' — must be pycryptodome, NOT pycrypto)
+pycryptodome>=3.15

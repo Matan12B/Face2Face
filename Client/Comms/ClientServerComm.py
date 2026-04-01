@@ -20,22 +20,23 @@ class ClientServer:
     def _recv_exact(self, sock, size):
         """
         Receive exactly `size` bytes from a socket, handling TCP fragmentation.
-
         :param sock: The socket to read from.
         :param size: Number of bytes to read.
         :return: The received bytes, or None if the connection was lost or an error occurred.
         """
         data = b""
-        while len(data) < size:
+        error = False
+        while len(data) < size and not error:
             try:
                 chunk = sock.recv(size - len(data))
+                if not chunk:
+                    error = True
+                else:
+                    data += chunk
             except Exception as e:
-                print(f"client server recv error: {e}")
-                return None
-            if not chunk:
-                return None
-            data += chunk
-        return data
+                print(f"client recv error: {e}")
+                error = True
+        return None if error else data
 
     def _mainLoop(self):
         """
@@ -53,7 +54,6 @@ class ClientServer:
                         self.open_clients[addr[0]] = [None, None]
                     self.open_clients[addr[0]][0] = client_socket
                     self.open_clients_soc_ip[client_socket] = addr[0]
-
                 else:
                     if current_socket in self.open_clients_soc_ip.keys():
                         decrypt_msg = ""
@@ -81,19 +81,14 @@ class ClientServer:
         try:
             if client_ip in self.open_clients:
                 client_soc = self.open_clients[client_ip][0]
-
-                # Remove from dicts first
                 if client_soc in self.open_clients_soc_ip:
                     del self.open_clients_soc_ip[client_soc]
                 del self.open_clients[client_ip]
-                # Now close socket
                 try:
                     client_soc.close()
                 except Exception:
                     pass
                 print(f"Client {client_ip} closed.")
-
-                # Notify the host's message handler so it can run handle_disconnect
                 if notify:
                     try:
                         disconnect_msg = f"hd^#^{client_ip}"
@@ -118,10 +113,10 @@ class ClientServer:
 
     def send_msg(self, client_ip, msg):
         """
-
-        :param client_ip:
-        :param msg:
-        :return:
+        send msg to client at client_ip
+        :param client_ip: clients ip
+        :param msg: msg to send
+        :return: None
         """
         if client_ip in self.open_clients.keys():
             soc = self._find_socket_by_ip(client_ip)
@@ -131,7 +126,7 @@ class ClientServer:
         """
         send msg to all connected users
         :param msg: string
-        :return:
+        :return: None
         """
         for ip in list(self.open_clients.keys()):
             if ip:
@@ -145,9 +140,9 @@ class ClientServer:
     def _send_msg(self, client_soc, msg):
         """
         send the encrypted msg
-        :param client_ip:
-        :param msg:
-        :return:
+        :param client_ip: clients ip
+        :param msg: msg 2 send
+        :return: None
         """
         if client_soc in self.open_clients_soc_ip.keys():
             client_ip = self._find_ip_by_socket(client_soc)
@@ -160,6 +155,11 @@ class ClientServer:
                 self.close_client(client_ip)
 
     def _find_ip_by_socket(self, client_soc):
+        """
+        find client ip by socket
+        :param client_soc: the client's socket used for search
+        :return: clients ip
+        """
         ret = ""
         if client_soc in self.open_clients_soc_ip.keys():
             ret = self.open_clients_soc_ip[client_soc]
