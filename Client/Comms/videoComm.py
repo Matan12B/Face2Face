@@ -2,9 +2,7 @@ import socket
 import threading
 import queue
 import time
-
 from Client.Logic import frameAssembler
-
 
 class VideoComm:
     def __init__(self, AES, open_clients):
@@ -18,21 +16,16 @@ class VideoComm:
         self.udp_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.port = 5000
         self.udp_socket.bind(("0.0.0.0", self.port))
-
         self.AES = AES
         self.open_clients = open_clients
         self.frameQ = queue.Queue()
-
         self.running = True
         self.max_packet_size = 65507
-
         self.frame_id_counter = 0
         self.counter_lock = threading.Lock()
-
         # one reassembler per sender ip
         self.reassemblers = {}
         self.last_cleanup = time.time()
-
         threading.Thread(target=self._receive_frames, daemon=True).start()
 
     def _next_frame_id(self):
@@ -62,14 +55,10 @@ class VideoComm:
         while self.running:
             try:
                 data, addr = self.udp_socket.recvfrom(self.max_packet_size)
-
                 decrypted_packet = self.AES.decrypt_file(data)
-
                 sender_ip = addr[0]
                 reassembler = self._get_reassembler(sender_ip)
-
                 frame, timestamp = reassembler.handle_packet(decrypted_packet)
-
                 if frame is not None:
                     # Allow enough room for all connected clients (at least 20 frames)
                     max_queued = max(20, len(self.open_clients) * 4)
@@ -78,15 +67,12 @@ class VideoComm:
                             self.frameQ.get_nowait()
                         except queue.Empty:
                             break
-
                     self.frameQ.put((frame, timestamp, addr))
-
                 now = time.time()
                 if now - self.last_cleanup > 0.2:
                     self.last_cleanup = now
                     for item in self.reassemblers.values():
                         item.cleanup_old_frames(max_age=0.5)
-
             except OSError:
                 break
             except Exception as e:
@@ -101,18 +87,15 @@ class VideoComm:
         """
         if not frame_bytes:
             return
-
         try:
             frame_id = self._next_frame_id()
             packets = frameAssembler.split_frame_to_packets(frame_id, timestamp, frame_bytes)
         except Exception as e:
             print("split frame error:", e)
             return
-
         for ip in list(self.open_clients.keys()):
             if not ip:
                 continue
-
             for packet in packets:
                 try:
                     encrypted_packet = self.AES.encrypt_file(packet)

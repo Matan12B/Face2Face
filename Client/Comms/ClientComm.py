@@ -23,7 +23,6 @@ class ClientComm:
     def _recv_exact(self, size):
         """
         Receive exactly `size` bytes from the server socket, handling TCP fragmentation.
-
         :param size: Number of bytes to read.
         :return: The received bytes, or None if the connection was lost or an error occurred.
         """
@@ -139,7 +138,7 @@ class ClientComm:
         """
         send message to server
         :param msg:
-        :return:
+        :return: if msg was sent
         """
         flag = False
         if self.cipher and self.running:
@@ -161,10 +160,3 @@ if __name__ == "__main__":
     time.sleep(0.2)
     myClient.send_msg("hello server")
     print(msgsQ.get())
-
-
-
-
-
-
-

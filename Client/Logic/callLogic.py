@@ -355,6 +355,3 @@ class CallLogic(CallParticipant):
             return
         print("Closing guest call...")
         super().close()
-
-
-
