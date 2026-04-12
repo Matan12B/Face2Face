@@ -46,7 +46,8 @@ class Host(CallParticipant):
 
         self.commands = {
             "hj": self.handle_join,
-            "hd": self.handle_disconnect
+            "hd": self.handle_disconnect,
+            "fd": self.on_meeting_closed_by_server,
         }
 
     def _default_client_entry(self, ip):
@@ -343,24 +344,35 @@ class Host(CallParticipant):
         except Exception as e:
             print("host server close error:", e)
 
-    def close(self):
+    def on_meeting_closed_by_server(self, data=None):
         """
-        Kick all guests, notify the central server of the meeting closing, then run full teardown.
+        Server already closed the meeting and notified guests; tear down local P2P only.
+        Signaling connection to the main server stays open.
+        """
+        self.close(remote_end=True)
+
+    def close(self, remote_end=False):
+        """
+        End the meeting: disconnect all guest P2P links. If remote_end is False, notify
+        guests (fd) and the signaling server; the main server TCP session is never closed here.
         """
         if not self.running:
             return
-        try:
-            kick_msg = clientProtocol.build_kick_msg()
-            # broadcast without triggering disconnect notifications (host is already shutting down)
-            for ip in list(self.open_clients.keys()):
-                try:
-                    self.host_server.send_msg(ip, kick_msg)
-                except Exception:
-                    pass
-            time.sleep(0.15)
-        except Exception as e:
-            print("kick broadcast error:", e)
-        msg2server = clientProtocol.build_leave_meeting(self.meeting_code)
-        self.comm.send_msg(msg2server)
+        if not remote_end:
+            try:
+                kick_msg = clientProtocol.build_kick_msg()
+                for ip in list(self.open_clients.keys()):
+                    try:
+                        self.host_server.send_msg(ip, kick_msg)
+                    except Exception:
+                        pass
+                time.sleep(0.15)
+            except Exception as e:
+                print("kick broadcast error:", e)
+            try:
+                if self.meeting_code:
+                    self.comm.send_msg(clientProtocol.build_leave_meeting(self.meeting_code))
+            except Exception as e:
+                print("leave server error:", e)
         super().close()
 
