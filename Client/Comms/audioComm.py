@@ -104,17 +104,19 @@ class AudioClient:
         :param audio_chunk: Raw audio bytes to send.
         :return: True if sent successfully, False otherwise.
         """
+        result = False
         if not self.cipher or not self.open:
-            return False
-        try:
-            encrypted = self.cipher.encrypt_file(audio_chunk)
-            self.my_socket.sendall(str(len(encrypted)).zfill(10).encode())
-            self.my_socket.sendall(encrypted)
-            return True
-        except Exception as e:
-            print(f"error in sending audio message - {e}")
-            self._close_client()
-            return False
+            pass
+        else:
+            try:
+                encrypted = self.cipher.encrypt_file(audio_chunk)
+                self.my_socket.sendall(str(len(encrypted)).zfill(10).encode())
+                self.my_socket.sendall(encrypted)
+                result = True
+            except Exception as e:
+                print(f"error in sending audio message - {e}")
+                self._close_client()
+        return result
 
     def _close_client(self):
         """
@@ -171,16 +173,18 @@ class AudioServer:
         :return: The received bytes, or None if the connection was lost or an error occurred.
         """
         data = b""
-        while len(data) < size and self.running:
+        error = False
+        while len(data) < size and self.running and not error:
             try:
                 chunk = sock.recv(size - len(data))
             except Exception as e:
                 print(f"audio server recv error: {e}")
-                return None
-            if not chunk:
-                return None
-            data += chunk
-        return data
+                error = True
+            if not error and not chunk:
+                error = True
+            if not error:
+                data += chunk
+        return None if error else data
 
     def _main_loop(self):
         """

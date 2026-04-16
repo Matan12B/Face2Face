@@ -10,12 +10,10 @@ class CameraControl:
     Continuously captures frames from the webcam.
     If camera read fails repeatedly, it reopens the camera.
     """
-
     def __init__(self, width=478, height=359, jpeg_quality=60):
         self.width = width
         self.height = height
         self.jpeg_quality = jpeg_quality
-
         self.cam = None
         self.last_frame = None
         self.running = False
@@ -24,7 +22,6 @@ class CameraControl:
         self.capture_thread = None
         self.failed_reads = 0
         self.last_frame_time = 0
-
         self._open_camera()
 
     def _open_camera(self):
@@ -36,7 +33,6 @@ class CameraControl:
                 self.cam.release()
         except Exception:
             pass
-
         system = platform.system()
         if system == "Windows":
             self.cam = cv2.VideoCapture(0, cv2.CAP_DSHOW)
@@ -44,10 +40,8 @@ class CameraControl:
             self.cam = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
         else:
             self.cam = cv2.VideoCapture(0)
-
         if not self.cam or not self.cam.isOpened():
             self.cam = cv2.VideoCapture(0)
-
         if self.cam and self.cam.isOpened():
             self.cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
             self.cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
@@ -62,12 +56,10 @@ class CameraControl:
         """
         if self.cam is None or not self.cam.isOpened():
             self._open_camera()
-
         if not self.running:
             self.running = True
             self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
             self.capture_thread.start()
-
         self.paused = False
         print("Camera started/resumed.")
 
@@ -76,7 +68,6 @@ class CameraControl:
         Pause camera capture. Fully release if pause_only=False.
         """
         self.paused = True
-
         if not pause_only:
             self.running = False
             try:
@@ -84,10 +75,8 @@ class CameraControl:
                     self.capture_thread.join(timeout=1)
             except Exception:
                 pass
-
             if self.cam is not None and self.cam.isOpened():
                 self.cam.release()
-
             print("Camera fully stopped.")
 
     def _capture_loop(self):
@@ -95,7 +84,6 @@ class CameraControl:
             if self.paused:
                 time.sleep(0.02)
                 continue
-
             try:
                 if self.cam is None or not self.cam.isOpened():
                     print("Camera is closed, reopening...")
@@ -119,29 +107,22 @@ class CameraControl:
                     time.sleep(0.03)
                     continue
                 self.failed_reads = 0
-
                 frame_resized = cv2.resize(frame, (self.width, self.height))
                 frame_resized = cv2.flip(frame_resized, 1)
                 with self.lock:
                     self.last_frame = frame_resized.copy()
                     self.last_frame_time = time.time()
-
                 time.sleep(0.01)
-
             except Exception as e:
                 print(f"Camera capture error: {e}")
                 time.sleep(0.05)
 
     def get_frame(self):
         with self.lock:
-            if self.last_frame is None:
-                return None
-
-            # if frame is too old, treat camera as stalled
-            if time.time() - self.last_frame_time > 1.0:
-                return None
-
-            return self.last_frame.copy()
+            result = None
+            if self.last_frame is not None and time.time() - self.last_frame_time <= 1.0:
+                result = self.last_frame.copy()
+            return result
 
     def release(self):
         """

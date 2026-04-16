@@ -38,48 +38,40 @@ class AudioOutput:
                 self._use_float32 = (cfg['dtype'] == 'float32')
                 print(f"AudioOutput stream opened: dtype={cfg['dtype']}, "
                       f"rate={self.rate}, channels={self.channels}")
-                return
+                break
             except Exception as e:
                 print(f"AudioOutput stream open error ({cfg.get('dtype')}, "
                       f"latency={cfg.get('latency', 'default')}): {e}")
-        self.stream = None
+        else:
+            self.stream = None
 
     def play_bytes(self, audio_bytes):
         """Play raw int16 bytes, restarting the stream if it has failed."""
-        if not audio_bytes:
-            return
-
-        # Lazy init: stream is created here (in the playback thread)
-        if self.stream is None:
-            self._open_stream()
+        if audio_bytes:
+            # Lazy init: stream is created here (in the playback thread)
             if self.stream is None:
-                return
-
-        try:
-            raw = np.frombuffer(audio_bytes, dtype=np.int16)
-
-            if self._use_float32:
-                audio_data = raw.astype(np.float32) / 32768.0
-            else:
-                audio_data = raw
-
-            if self.channels > 1:
-                trim = (len(audio_data) // self.channels) * self.channels
-                audio_data = audio_data[:trim].reshape(-1, self.channels)
-
-            if len(audio_data) == 0:
-                return
-
-            self.stream.write(audio_data)
-        except Exception as e:
-            print(f"AudioOutput play_bytes error: {e} — restarting stream")
-            try:
-                self.stream.stop()
-                self.stream.close()
-            except Exception:
-                pass
-            self.stream = None
-            self._open_stream()
+                self._open_stream()
+            if self.stream is not None:
+                try:
+                    raw = np.frombuffer(audio_bytes, dtype=np.int16)
+                    if self._use_float32:
+                        audio_data = raw.astype(np.float32) / 32768.0
+                    else:
+                        audio_data = raw
+                    if self.channels > 1:
+                        trim = (len(audio_data) // self.channels) * self.channels
+                        audio_data = audio_data[:trim].reshape(-1, self.channels)
+                    if len(audio_data) > 0:
+                        self.stream.write(audio_data)
+                except Exception as e:
+                    print(f"AudioOutput play_bytes error: {e} — restarting stream")
+                    try:
+                        self.stream.stop()
+                        self.stream.close()
+                    except Exception:
+                        pass
+                    self.stream = None
+                    self._open_stream()
 
     def stop(self):
         """Close stream and release resources."""

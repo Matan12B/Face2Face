@@ -4,7 +4,7 @@ import cv2
 import queue
 import socket
 import psutil
-
+import numpy as np
 from Client.Devices.Camera import CameraControl
 from Client.Devices.Microphone import Microphone
 from Client.Devices.AudioOutputDevice import AudioOutput
@@ -20,13 +20,14 @@ def get_ip_by_interface(interface_name="Ethernet 4"):
     :param interface_name: Name of the network interface to look up.
     :return: IPv4 address string, or None if not found.
     """
+    result = None
     addrs = psutil.net_if_addrs()
-    if interface_name not in addrs:
-        return None
-    for addr in addrs[interface_name]:
-        if addr.family == socket.AF_INET:
-            return addr.address
-    return None
+    if interface_name in addrs:
+        for addr in addrs[interface_name]:
+            if addr.family == socket.AF_INET:
+                result = addr.address
+                break
+    return result
 
 
 def get_fallback_ip(target_ip):
@@ -36,14 +37,16 @@ def get_fallback_ip(target_ip):
     :param target_ip: A reachable IP to route towards.
     :return: Local IPv4 address string, or '127.0.0.1' on failure.
     """
+    result = "127.0.0.1"
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect((target_ip, 1))
-        return s.getsockname()[0]
+        result = s.getsockname()[0]
     except Exception:
-        return "127.0.0.1"
+        pass
     finally:
         s.close()
+    return result
 
 
 class CallParticipant:
@@ -83,10 +86,32 @@ class CallParticipant:
         # GUI shows a black placeholder instead of the frozen last frame.
         self.last_video_received_time = {}
 
-        self.camera = CameraControl(width=320, height=240, jpeg_quality=5)
+        try:
+            self.camera = CameraControl(width=320, height=240, jpeg_quality=5)
+            # Check if the camera actually opened
+            if self.camera.cam is None or not self.camera.cam.isOpened():
+                print("No camera available – joining with camera off.")
+                self.no_camera = True
+            else:
+                self.no_camera = False
+        except Exception as e:
+            print(f"Camera init failed ({e}) – joining with camera off.")
+            self.camera = None
+            self.no_camera = True
         self.encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), 30]
-        self.mic = Microphone(80, rate=16000, channels=1, chunk=160)
-        self.AudioOutput = AudioOutput(rate=16000, channels=1)
+        try:
+            self.mic = Microphone(80, rate=16000, channels=1, chunk=160)
+            self.no_mic = False
+        except Exception as e:
+            print(f"Microphone init failed ({e}) – joining muted without mic.")
+            self.mic = None
+            self.no_mic = True
+
+        try:
+            self.AudioOutput = AudioOutput(rate=16000, channels=1)
+        except Exception as e:
+            print(f"AudioOutput init failed ({e}) – joining without audio output.")
+            self.AudioOutput = None
         self.av_sync = AVSyncManager(playout_delay=playout_delay)
         self.video_comm = VideoComm(self.AES, self.open_clients, video_port)
 
@@ -127,49 +152,46 @@ class CallParticipant:
         on the calling thread until the call ends.
         """
         self._pre_start()
-
         print("Starting call...")
-        self.camera.start()
-        self.mic.start()
-        self.mic.unmute()
-
+        if self.camera is not None and not self.no_camera:
+            self.camera.start()
+        if self.mic is not None and not self.no_mic:
+            try:
+                self.mic.start()
+                self.mic.unmute()
+            except Exception as e:
+                print(f"Mic start failed ({e}) – continuing without mic.")
+                self.no_mic = True
         threading.Thread(target=self.receive_video_loop, daemon=True).start()
         threading.Thread(target=self.playback_loop, daemon=True).start()
         self._start_threads()
-
         try:
             while self.running:
                 now = time.time()
+                if self.camera is None or self.no_camera:
+                    time.sleep(0.1)
+                    continue
                 frame = self.camera.get_frame()
-
                 if frame is None:
                     time.sleep(0.005)
                     continue
-
                 frame = frame.copy()
-
                 while self.UI_queue.qsize() >= 1:
                     try:
                         self.UI_queue.get_nowait()
                     except queue.Empty:
                         break
-
                 self.UI_queue.put(frame)
-
                 if self.meeting_start_time is not None:
                     if now - self.last_video_send_time >= self.video_send_interval:
                         self.last_video_send_time = now
                         timestamp = now - self.meeting_start_time
                         self._send_video(frame, timestamp)
-
                 time.sleep(0.005)
-
         except Exception as e:
             print("start loop error:", e)
         finally:
             self.close()
-
-    # ── hooks for subclasses ──────────────────────────────────────────────────
 
     def _resolve_video_sender(self, addr):
         """
@@ -199,8 +221,6 @@ class CallParticipant:
         """
         pass
 
-    # ── shared loops ─────────────────────────────────────────────────────────
-
     def receive_video_loop(self):
         """
         Drain the video frame queue and feed frames into the AV sync manager.
@@ -213,22 +233,16 @@ class CallParticipant:
                         video_data, timestamp, addr = self.video_comm.frameQ.get_nowait()
                     except queue.Empty:
                         break
-
                     sender_ip = self._resolve_video_sender(addr)
                     if sender_ip is None:
                         continue
-
                     if sender_ip not in self.open_clients:
                         self.open_clients[sender_ip] = self._default_client_entry(sender_ip)
-
                     if video_data is None:
                         continue
-
                     self.av_sync.add_video(sender_ip, float(timestamp), video_data)
                     self.last_video_received_time[sender_ip] = time.monotonic()
-
                 time.sleep(0.005)
-
             except Exception as e:
                 print("receive_video_loop error:", e)
                 time.sleep(0.05)
@@ -241,13 +255,9 @@ class CallParticipant:
         garbled/saturated audio).
         Runs in a background daemon thread.
         """
-        import numpy as np
-
         while self.running:
             now = time.monotonic()
             got_audio = False
-
-            # --- one chunk per sender, mixed together for simultaneous playback ---
             mixed_audio = None
             for client_ip in list(self.av_sync.states.keys()):
                 try:
@@ -269,41 +279,31 @@ class CallParticipant:
                         extended = chunk.copy()
                         extended[:len(mixed_audio)] += mixed_audio
                         mixed_audio = extended
-
                 except Exception as e:
                     print("playback_loop audio error:", e)
-
-            if mixed_audio is not None:
+            if mixed_audio is not None and self.AudioOutput is not None:
                 try:
                     mixed_clipped = np.clip(mixed_audio, -32768, 32767).astype(np.int16)
                     self.AudioOutput.play_bytes(mixed_clipped.tobytes())
                 except Exception as e:
                     print("playback_loop write error:", e)
-
-            # --- video: latest due frame per client ---
             for client_ip in list(self.av_sync.states.keys()):
                 try:
                     frame = self.av_sync.pop_latest_due_video(client_ip, now)
                     if frame is not None:
                         self.latest_remote_frames[client_ip] = frame
-
                         while self.remote_video_queue.qsize() >= max(6, len(self.av_sync.states) * 2):
                             try:
                                 self.remote_video_queue.get_nowait()
                             except queue.Empty:
                                 break
-
                         self.remote_video_queue.put((client_ip, frame))
-
                 except Exception as e:
                     print("playback_loop video error:", e)
-
             # When audio was played, loop immediately to drain any backlog quickly.
             # When idle, sleep briefly to avoid burning CPU.
             if not got_audio:
                 time.sleep(0.005)
-
-    # ── shared handlers ───────────────────────────────────────────────────────
 
     def handle_disconnect(self, data):
         """
@@ -318,36 +318,34 @@ class CallParticipant:
         except Exception as e:
             print("disconnect parse error:", e)
             return
-
         print(f"{username} left the call")
-
         if ip in self.open_clients:
             del self.open_clients[ip]
-
         if ip in self.latest_remote_frames:
             del self.latest_remote_frames[ip]
-
         self.last_video_received_time.pop(ip, None)
-
         self.av_sync.remove_sender(ip)
-
         try:
             self.video_comm.remove_user(ip, 0)
         except Exception:
             pass
 
-    # ── cleanup ───────────────────────────────────────────────────────────────
-
     def _cleanup_devices(self):
         """
         Stop all local media devices and close the video communication socket.
         """
-        for label, device in [("camera", self.camera), ("mic", self.mic), ("audio output", self.AudioOutput)]:
+        devices = []
+        if self.camera is not None:
+            devices.append(("camera", self.camera))
+        if self.mic is not None:
+            devices.append(("mic", self.mic))
+        if self.AudioOutput is not None:
+            devices.append(("audio output", self.AudioOutput))
+        for label, device in devices:
             try:
                 device.stop()
             except Exception as e:
                 print(f"{label} stop error:", e)
-
         try:
             self.video_comm.close()
         except Exception as e:
@@ -358,13 +356,12 @@ class CallParticipant:
         Stop the call, clean up all devices, and close communication channels.
         Subclasses should call super().close() or override _close_comms() for extra teardown.
         """
-        if not self.running:
-            return
-        print("Closing call...")
-        self.running = False
-        self._cleanup_devices()
-        self._close_comms()
-        time.sleep(0.1)
+        if self.running:
+            print("Closing call...")
+            self.running = False
+            self._cleanup_devices()
+            self._close_comms()
+            time.sleep(0.1)
 
     def leave_call(self):
         """

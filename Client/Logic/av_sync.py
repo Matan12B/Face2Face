@@ -65,41 +65,41 @@ class AVSyncManager:
         if now is None:
             now = time.monotonic()
 
+        result = None
         state = self.states.get(sender_ip)
-        if not state:
-            return None
+        if state:
+            heap = state["audio_heap"]
 
-        heap = state["audio_heap"]
+            # Drop chunks that are too old to bother playing
+            while heap and heap[0][0] < now - stale_threshold:
+                heapq.heappop(heap)
 
-        # Drop chunks that are too old to bother playing
-        while heap and heap[0][0] < now - stale_threshold:
-            heapq.heappop(heap)
+            # Return the single oldest chunk that is due now
+            if heap and heap[0][0] <= now:
+                _, sender_ts, audio_bytes = heapq.heappop(heap)
+                result = (sender_ts, audio_bytes)
 
-        # Return the single oldest chunk that is due now
-        if heap and heap[0][0] <= now:
-            _, sender_ts, audio_bytes = heapq.heappop(heap)
-            return (sender_ts, audio_bytes)
-
-        return None
+        return result
 
     def pop_latest_due_video(self, sender_ip, now=None):
         if now is None:
             now = time.monotonic()
 
         state = self.states.get(sender_ip)
-        if not state:
-            return None
+        result = None
+        if state:
+            latest_frame = None
+            while state["video_heap"] and state["video_heap"][0][0] <= now:
+                _, _, frame = heapq.heappop(state["video_heap"])
+                latest_frame = frame
 
-        latest_frame = None
-        while state["video_heap"] and state["video_heap"][0][0] <= now:
-            _, _, frame = heapq.heappop(state["video_heap"])
-            latest_frame = frame
+            if latest_frame is not None:
+                state["last_video_frame"] = latest_frame
+                result = latest_frame
+            else:
+                result = state["last_video_frame"]
 
-        if latest_frame is not None:
-            state["last_video_frame"] = latest_frame
-            return latest_frame
-
-        return state["last_video_frame"]
+        return result
 
     def remove_sender(self, sender_ip):
         if sender_ip in self.states:

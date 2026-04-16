@@ -9,10 +9,12 @@ def unpack(msg):
     opcode = split[0]
     data = split[1:]
     if opcode == "cc" and data:
-        return opcode, json.loads(data[0])
-    if len(data) == 1:
-        return opcode, data[0]
-    return opcode, data
+        result = json.loads(data[0])
+    elif len(data) == 1:
+        result = data[0]
+    else:
+        result = data
+    return opcode, result
 
 def build_username_msg(username):
     """

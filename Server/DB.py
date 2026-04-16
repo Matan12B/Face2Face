@@ -65,6 +65,7 @@ class DB:
         :param saved_password:
         :return:
         """
+        result = False
         try:
             salt_hex, hash_hex = saved_password.split("$")
             salt = bytes.fromhex(salt_hex)
@@ -77,9 +78,10 @@ class DB:
                 100000
             )
 
-            return hmac.compare_digest(check_hash, saved_hash)
+            result = hmac.compare_digest(check_hash, saved_hash)
         except Exception:
-            return False
+            pass
+        return result
 
     def add_user(self, userName, password):
         """
@@ -87,22 +89,22 @@ class DB:
         """
         userName = userName.strip()
         password = password.strip()
+        result = False
 
         if not userName or not password:
-            return False
+            pass
+        elif len(userName) > 15 or len(password) > 10:
+            pass
+        elif self.user_exists(userName):
+            pass
+        else:
+            hashed_password = self.hash_password(password)
+            sql = "INSERT INTO users VALUES (?, ?)"
+            self.curr.execute(sql, (userName, hashed_password))
+            self.conn.commit()
+            result = True
 
-        if len(userName) > 15 or len(password) > 10:
-            return False
-
-        if self.user_exists(userName):
-            return False
-
-        hashed_password = self.hash_password(password)
-
-        sql = "INSERT INTO users VALUES (?, ?)"
-        self.curr.execute(sql, (userName, hashed_password))
-        self.conn.commit()
-        return True
+        return result
 
     def update_password(self, userName, new_password):
         """
@@ -110,22 +112,22 @@ class DB:
         """
         userName = userName.strip()
         new_password = new_password.strip()
+        result = False
 
         if not userName or not new_password:
-            return False
+            pass
+        elif len(new_password) > 10:
+            pass
+        elif not self.user_exists(userName):
+            pass
+        else:
+            hashed_password = self.hash_password(new_password)
+            sql = "UPDATE users SET password = ? WHERE userName = ?"
+            self.curr.execute(sql, (hashed_password, userName))
+            self.conn.commit()
+            result = True
 
-        if len(new_password) > 10:
-            return False
-
-        if not self.user_exists(userName):
-            return False
-
-        hashed_password = self.hash_password(new_password)
-
-        sql = "UPDATE users SET password = ? WHERE userName = ?"
-        self.curr.execute(sql, (hashed_password, userName))
-        self.conn.commit()
-        return True
+        return result
 
     def verify_user(self, userName, password):
         """
@@ -135,10 +137,11 @@ class DB:
         self.curr.execute(sql, (userName,))
         row = self.curr.fetchone()
 
-        if not row:
-            return False
+        result = False
+        if row:
+            result = self.verify_password(password, row[0])
 
-        return self.verify_password(password, row[0])
+        return result
 
     def get_all_users(self):
         """

@@ -53,42 +53,8 @@ class HomeFrame(wx.Frame):
         header_sizer.Add(self.logout_btn, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 24)
         header.SetSizer(header_sizer)
 
-        content = wx.BoxSizer(wx.HORIZONTAL)
+        content = wx.BoxSizer(wx.VERTICAL)
 
-        spotlight = wx.Panel(panel)
-        ui_theme.style_window(spotlight, ui_theme.PALETTE["sidebar"], ui_theme.PALETTE["text_inverted"])
-        spotlight_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        spotlight_title = wx.StaticText(spotlight, label="Professional meeting flow")
-        ui_theme.style_text(spotlight_title, ui_theme.PALETTE["text_inverted"], size_delta=11, bold=True)
-
-        spotlight_copy = wx.StaticText(
-            spotlight,
-            label=(
-                "Use this dashboard to create rooms instantly or jump into an invite.\n"
-                "The layout is tuned to feel closer to a modern Zoom home screen."
-            )
-        )
-        ui_theme.style_text(spotlight_copy, ui_theme.PALETTE["surface_alt"], size_delta=1)
-        spotlight_copy.Wrap(300)
-
-        spotlight_sizer.AddSpacer(40)
-        spotlight_sizer.Add(spotlight_title, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 18)
-        spotlight_sizer.Add(spotlight_copy, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 28)
-
-        quick_facts = [
-            "Start a meeting and share the generated code from the call window.",
-            "Join using an invite code from another user.",
-            "Stay connected to the signaling server until you log out.",
-        ]
-        for line in quick_facts:
-            fact = wx.StaticText(spotlight, label=line)
-            ui_theme.style_text(fact, ui_theme.PALETTE["surface_alt"], size_delta=1)
-            fact.Wrap(300)
-            spotlight_sizer.Add(fact, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 28)
-        spotlight.SetSizer(spotlight_sizer)
-
-        actions_col = wx.BoxSizer(wx.VERTICAL)
         card_row = wx.BoxSizer(wx.HORIZONTAL)
 
         create_card = wx.Panel(panel)
@@ -160,11 +126,8 @@ class HomeFrame(wx.Frame):
         card_row.Add(create_card, 1, wx.RIGHT | wx.EXPAND, 12)
         card_row.Add(join_card, 1, wx.LEFT | wx.EXPAND, 12)
 
-        actions_col.Add(card_row, 1, wx.EXPAND | wx.BOTTOM, 24)
-        actions_col.Add(tips_card, 0, wx.EXPAND)
-
-        content.Add(spotlight, 1, wx.RIGHT | wx.EXPAND, 18)
-        content.Add(actions_col, 2, wx.LEFT | wx.EXPAND, 18)
+        content.Add(card_row, 1, wx.EXPAND | wx.BOTTOM, 24)
+        content.Add(tips_card, 0, wx.EXPAND)
 
         main_sizer.Add(header, 0, wx.EXPAND | wx.ALL, 24)
         main_sizer.Add(content, 1, wx.LEFT | wx.RIGHT | wx.BOTTOM | wx.EXPAND, 24)

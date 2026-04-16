@@ -168,19 +168,18 @@ class Server:
         """
         Remove ip from a meeting roster. Does not remove signaling login.
         """
-        if not meeting_id or meeting_id not in self.meetings:
-            return
-        try:
-            self.meetings[meeting_id][2].remove(ip)
-        except ValueError:
-            pass
-        if notify_others:
-            for client_ip in self.meetings[meeting_id][2]:
-                msg = serverProtocol.build_participant_left(ip)
-                self.comm.send_msg(client_ip, msg)
-        if not self.meetings[meeting_id][2]:
-            del self.meetings[meeting_id]
-            print(f"Meeting {meeting_id} closed (empty)")
+        if meeting_id and meeting_id in self.meetings:
+            try:
+                self.meetings[meeting_id][2].remove(ip)
+            except ValueError:
+                pass
+            if notify_others:
+                for client_ip in self.meetings[meeting_id][2]:
+                    msg = serverProtocol.build_participant_left(ip)
+                    self.comm.send_msg(client_ip, msg)
+            if not self.meetings[meeting_id][2]:
+                del self.meetings[meeting_id]
+                print(f"Meeting {meeting_id} closed (empty)")
 
     def handle_disconnect(self, ip, data):
         """
@@ -207,19 +206,18 @@ class Server:
         """
         End signaling session: leave any meeting, then drop login state for this IP.
         """
-        if ip not in self.open_clients:
-            return
-        username = self.open_clients[ip][0]
-        meeting_id = self.open_clients[ip][1]
+        if ip in self.open_clients:
+            username = self.open_clients[ip][0]
+            meeting_id = self.open_clients[ip][1]
 
-        if meeting_id and meeting_id in self.meetings:
-            if self.meetings[meeting_id][3] == ip:
-                self.close_meeting(ip, meeting_id)
-            else:
-                self._remove_client_from_meeting(ip, meeting_id, notify_others=True)
+            if meeting_id and meeting_id in self.meetings:
+                if self.meetings[meeting_id][3] == ip:
+                    self.close_meeting(ip, meeting_id)
+                else:
+                    self._remove_client_from_meeting(ip, meeting_id, notify_others=True)
 
-        del self.open_clients[ip]
-        print(f"Logged out from signaling server: {username} ({ip})")
+            del self.open_clients[ip]
+            print(f"Logged out from signaling server: {username} ({ip})")
 
     def handle_msgs(self):
         """

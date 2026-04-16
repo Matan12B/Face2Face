@@ -63,9 +63,10 @@ class CallLogic(CallParticipant):
         :return: Canonical IP string, or None to discard the frame.
         """
         sender_ip = self._canonical_sender_ip(addr[0])
+        result = sender_ip
         if sender_ip == self.ip and sender_ip != self.host_ip:
-            return None
-        return sender_ip
+            result = None
+        return result
 
     def _canonical_sender_ip(self, sender_ip):
         """
@@ -75,24 +76,20 @@ class CallLogic(CallParticipant):
         :param sender_ip: Raw IP from the UDP packet.
         :return: Canonical participant IP string.
         """
+        result = sender_ip
+
         if sender_ip == self.ip:
-            return self.ip
-
-        if sender_ip in self.open_clients:
-            return sender_ip
-
-        if self.host_video_ip is not None and sender_ip == self.host_video_ip:
-            return self.host_ip
-
-        # Any unrecognised sender while host video IP is still unknown must be the host
-        # (the host is always first to send UDP frames; other guests' IPs are registered
-        # in open_clients via the hj/cc messages before their frames arrive)
-        if self.host_video_ip is None and self.host_ip in self.open_clients:
+            result = self.ip
+        elif sender_ip in self.open_clients:
+            result = sender_ip
+        elif self.host_video_ip is not None and sender_ip == self.host_video_ip:
+            result = self.host_ip
+        elif self.host_video_ip is None and self.host_ip in self.open_clients:
             self.host_video_ip = sender_ip
             print("Mapped host UDP ip", sender_ip, "to host control ip", self.host_ip)
-            return self.host_ip
+            result = self.host_ip
 
-        return sender_ip
+        return result
 
     def _pre_start(self):
         """
@@ -161,7 +158,7 @@ class CallLogic(CallParticipant):
         """
         while self.running:
             try:
-                if not self.mic.running or self.meeting_start_time is None:
+                if self.mic is None or not self.mic.running or self.meeting_start_time is None:
                     time.sleep(0.01)
                     continue
 
@@ -355,12 +352,11 @@ class CallLogic(CallParticipant):
         Stop the guest call and clean up all resources.
         Notifies the signaling server that we left the meeting (session stays logged in).
         """
-        if not self.running:
-            return
-        try:
-            if self.meeting_code and self.comm and getattr(self.comm, "running", False):
-                self.comm.send_msg(clientProtocol.build_leave_meeting(self.meeting_code))
-        except Exception as e:
-            print("notify server leave error:", e)
-        print("Closing guest call...")
-        super().close()
+        if self.running:
+            try:
+                if self.meeting_code and self.comm and getattr(self.comm, "running", False):
+                    self.comm.send_msg(clientProtocol.build_leave_meeting(self.meeting_code))
+            except Exception as e:
+                print("notify server leave error:", e)
+            print("Closing guest call...")
+            super().close()
