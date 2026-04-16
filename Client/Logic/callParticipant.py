@@ -98,7 +98,7 @@ class CallParticipant:
             print(f"Camera init failed ({e}) – joining with camera off.")
             self.camera = None
             self.no_camera = True
-        self.encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), 30]
+        self.encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), 50]
         try:
             self.mic = Microphone(80, rate=16000, channels=1, chunk=160)
             self.no_mic = False

@@ -172,14 +172,16 @@ class HomeFrame(wx.Frame):
     def join_meeting(self, event):
         code = self.code_box.GetValue().strip()
 
-        if not code:
+        if code:
+            if  code.isascii():
+                self._disable_buttons()
+                self._pending_previous_role = self.client.role
+                self.client.request_join_meeting(code)
+                wx.CallLater(500, self._open_call_frame)
+            else:
+                wx.MessageBox("Meeting code must contain only English letters and numbers.", "Invalid Code", wx.OK | wx.ICON_WARNING)
+        else:
             wx.MessageBox("Enter meeting code")
-            return
-
-        self._disable_buttons()
-        self._pending_previous_role = self.client.role
-        self.client.request_join_meeting(code)
-        wx.CallLater(500, self._open_call_frame)
 
     def _open_call_frame(self):
         # Run the role-wait loop in a background thread so the GUI thread
@@ -189,6 +191,8 @@ class HomeFrame(wx.Frame):
             while time.time() < deadline:
                 role = self.client.role
                 if role is not None and role is not self._pending_previous_role:
+                    break
+                if getattr(self.client, "last_error", None):
                     break
                 time.sleep(0.02)
             wx.CallAfter(self._create_call_frame)

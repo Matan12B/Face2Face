@@ -108,14 +108,13 @@ class Client:
             msg = self.msgsQ.get()
             print(msg)
             opcode, data = clientProtocol.unpack(msg)
-            if self.role:
+            if opcode in self.commands:
+                self.commands[opcode](data)
+            elif self.role:
                 # Server sends participant_left as hd^#^<ip> → data is a string; handlers expect [ip].
                 if opcode == "hd" and isinstance(data, str):
                     data = [data]
                 self.role.handle_msgs_from_client_logic(opcode, data)
-                continue
-            if opcode in self.commands:
-                self.commands[opcode](data)
 
     def get_login_status(self, status):
         """
@@ -168,7 +167,10 @@ class Client:
 
     def wait_signaling(self, timeout=15.0):
         """Block until the TCP + key exchange to the signaling server completes (or timeout)."""
-        return self.comm.connected.wait(timeout=timeout)
+        result = self.comm.connected.wait(timeout=timeout)
+        if result:
+            self.start()
+        return result
 
     def disconnect_from_server(self):
         """
@@ -188,6 +190,7 @@ class Client:
         except Exception as e:
             print("close signaling error:", e)
         self.msgsQ = queue.Queue()
+        self.handle_msgs_running = False
         self.comm = ClientComm(
             self.server_ip, self.port, self.msgsQ, dh_p=self._dh_p, dh_g=self._dh_g
         )

@@ -163,13 +163,6 @@ class RoundedButton(wx.Control):
             gc.SetBrush(gc.CreateBrush(wx.Brush(bg)))
             gc.DrawPath(path)
 
-            if self.HasFocus() and self.IsEnabled():
-                focus_pen = wx.Pen(_blend_colour(PALETTE["primary"], wx.Colour(255, 255, 255), 0.25), 1, wx.PENSTYLE_DOT)
-                gc.SetPen(gc.CreatePen(focus_pen))
-                gc.SetBrush(wx.TRANSPARENT_BRUSH)
-                focus_path = gc.CreatePath()
-                focus_path.AddRoundedRectangle(4, 4, max(1, width - 9), max(1, height - 9), max(6, self._radius - 5))
-                gc.DrawPath(focus_path)
 
             gc.SetFont(self.GetFont(), fg)
             text = self.GetLabel() or ""

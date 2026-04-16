@@ -110,6 +110,9 @@ class _BaseAuthFrame(wx.Frame):
         if not username or not password:
             self._set_status("Username and password are required.", "error")
             result = (None, None)
+        elif not username.isascii() or not password.isascii():
+            self._set_status("Only English letters, numbers, and symbols are allowed.", "error")
+            result = (None, None)
         elif len(username) > 15:
             self._set_status("Username must be up to 15 characters.", "error")
             result = (None, None)
