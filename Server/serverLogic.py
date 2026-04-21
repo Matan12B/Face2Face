@@ -10,6 +10,8 @@ from string import ascii_uppercase
 import random
 
 class Server:
+    MAX_MEETING_SIZE = 4
+
     def __init__(self, port=1231, dh_p=797, dh_g=100):
         self.port = port
         self.dh_p = dh_p
@@ -30,6 +32,7 @@ class Server:
             "cm": self.close_meeting,
             "hd": self.handle_disconnect,
             "lo": self.log_out,
+            "dc": self.handle_crash_disconnect,
         }
 
     def start(self):
@@ -110,35 +113,45 @@ class Server:
         self.comm.send_msg(ip, msg)
 
     def join_meeting(self, ip, data):
+        """
+        add client to meeting if possible else send meeting full msg
+        :param ip: Client IP address
+        :param data: Meeting data
+        :return: None
+        """
         meeting_id = data[0]
         if meeting_id in self.meetings:
-            meeting_port = self.meetings[meeting_id][0]
-            shared_key = self.meetings[meeting_id][1]
             participants = self.meetings[meeting_id][2]
-            username = data[1]
-            participants.append(ip)
+            if len(participants) >= self.MAX_MEETING_SIZE:
+                print(f"Meeting {meeting_id} is full ({self.MAX_MEETING_SIZE} participants). Rejecting {ip}")
+                msg = serverProtocol.build_error("Meeting is full")
+                self.comm.send_msg(ip, msg)
+            else:
+                meeting_port = self.meetings[meeting_id][0]
+                shared_key = self.meetings[meeting_id][1]
+                username = data[1]
+                participants.append(ip)
+                existing_clients = {}
+                for oc_ip in self.open_clients.keys():
+                    if self.open_clients[oc_ip][1] == meeting_id:
+                        existing_clients[oc_ip] = self.open_clients[oc_ip][0]
+                print(f"Client {ip} joined meeting {meeting_id}")
 
-            existing_clients = {}
-            for oc_ip in self.open_clients.keys():
-                if self.open_clients[oc_ip][1] == meeting_id:
-                    existing_clients[oc_ip] = self.open_clients[oc_ip][0]
-            print(f"Client {ip} joined meeting {meeting_id}")
+                if ip in self.open_clients:
+                    self.open_clients[ip][1] = meeting_id
 
-            if ip in self.open_clients:
-                self.open_clients[ip][1] = meeting_id
+                give_role = serverProtocol.build_give_role("guest", meeting_port, shared_key, self.meetings[meeting_id][3])
+                self.comm.send_msg(ip, give_role)
+                print("sending role")
 
-            give_role = serverProtocol.build_give_role("guest", meeting_port, shared_key, self.meetings[meeting_id][3])
-            self.comm.send_msg(ip, give_role)
-            print("sending role")
+                give_existing_clients = serverProtocol.build_clients_connected(existing_clients)
+                self.comm.send_msg(ip, give_existing_clients)
 
-            give_existing_clients = serverProtocol.build_clients_connected(existing_clients)
-            self.comm.send_msg(ip, give_existing_clients)
-
-            for other_ip in existing_clients:
-                if other_ip == ip:
-                    continue
-                notify_existing = serverProtocol.build_client_joined(ip, meeting_port, shared_key, username)
-                self.comm.send_msg(other_ip, notify_existing)
+                for other_ip in existing_clients:
+                    if other_ip == ip:
+                        continue
+                    notify_existing = serverProtocol.build_client_joined(ip, meeting_port, shared_key, username)
+                    self.comm.send_msg(other_ip, notify_existing)
         else:
             print(f"Meeting {meeting_id} not found for client {ip}")
             msg = serverProtocol.build_error("Meeting not found")
@@ -218,6 +231,18 @@ class Server:
 
             del self.open_clients[ip]
             print(f"Logged out from signaling server: {username} ({ip})")
+
+    def handle_crash_disconnect(self, ip, data=None):
+        """
+        Called automatically when a client's TCP socket drops without sending
+        a clean logout/disconnect message (e.g. process crash, network loss).
+        Reuses log_out so the meeting is closed (if host) or the participant
+        is removed (if guest) — exactly as if they had sent 'lo'.
+        :param ip: The IP address of the crashed client.
+        :param data: Unused (present to match the command handler signature).
+        """
+        print(f"Crash-disconnect detected for {ip}, cleaning up...")
+        self.log_out(ip)
 
     def handle_msgs(self):
         """

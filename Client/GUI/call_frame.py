@@ -12,16 +12,9 @@ Two classes:
 import os, threading, queue, time
 import wx, cv2
 from Client.GUI import ui_theme
-
-# ── icon path for the "muted" overlay ──────────────────────────────
 _MUTED_ICON_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)), "assets", "muted.png"
 )
-
-
-# ===================================================================
-#  VideoPanel — one video tile
-# ===================================================================
 class VideoPanel(wx.Panel):
     """
     Displays ONE participant's video (or a black / empty placeholder).
@@ -37,21 +30,18 @@ class VideoPanel(wx.Panel):
     def __init__(self, parent, width=478, height=359):
         super().__init__(parent, size=(width, height))
         self.panel_width, self.panel_height = width, height
-
         # Current display state
         self.current_bitmap = None   # wx.Bitmap when showing live video
         self.show_black = False      # True → camera-off black rectangle
         self.label_text = ""         # overlay username
         self.label_muted = False     # show muted icon next to name?
         self._muted_bmp_cache = {}   # size → wx.Bitmap (or None)
-
         self.SetMinSize((width, height))
         self.SetBackgroundStyle(wx.BG_STYLE_PAINT)
         self.SetBackgroundColour(ui_theme.PALETTE["video_tile"])
         self.Bind(wx.EVT_PAINT, self._on_paint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)  # flicker-free
 
-    # ── public setters (called from CallFrame's timer) ─────────────
     def set_frame(self, frame):
         """Show a live OpenCV BGR frame."""
         if frame is None:
@@ -303,23 +293,24 @@ class CallFrame(wx.Frame):
     def _build_controls(self):
         """Bottom bar: Mic, Camera, (Kick if host), Leave."""
         panel = wx.Panel(self.panel)
-        ui_theme.style_window(panel, ui_theme.PALETTE["call_surface"], ui_theme.PALETTE["text_inverted"])
+        ui_theme.style_window(panel, ui_theme.PALETTE["call_surface"], ui_theme.PALETTE["call_ctrl_text"])
         row = wx.BoxSizer(wx.HORIZONTAL)
 
-        cam_label = "Start Camera" if self.is_camera_off else "Stop Camera"
-        self.mic_btn = ui_theme.create_button(panel, "Mute Mic", kind="secondary", min_height=46, min_width=138)
-        self.cam_btn = ui_theme.create_button(panel, cam_label, kind="secondary", min_height=46, min_width=154)
-        self.kick_btn = ui_theme.create_button(panel, "Remove", kind="warning", min_height=46, min_width=132)
-        self.leave_btn = ui_theme.create_button(panel, "Leave", kind="danger", min_height=46, min_width=128)
+        mic_label = "Unmute" if self.is_muted    else "Mute"
+        cam_label = "Camera On" if self.is_camera_off else "Camera Off"
+        self.mic_btn  = ui_theme.create_button(panel, mic_label,  kind="call",        min_height=38, min_width=110)
+        self.cam_btn  = ui_theme.create_button(panel, cam_label,  kind="call",        min_height=38, min_width=118)
+        self.kick_btn = ui_theme.create_button(panel, "Remove",   kind="call",        min_height=38, min_width=110)
+        self.leave_btn= ui_theme.create_button(panel, "Leave",    kind="call_danger", min_height=38, min_width=100)
 
-        row.Add(self.mic_btn, 0, wx.ALL, 8)
-        row.Add(self.cam_btn, 0, wx.ALL, 8)
+        row.Add(self.mic_btn,  0, wx.ALL, 6)
+        row.Add(self.cam_btn,  0, wx.ALL, 6)
         if self.is_host:
-            row.Add(self.kick_btn, 0, wx.ALL, 8)
+            row.Add(self.kick_btn, 0, wx.ALL, 6)
         else:
             self.kick_btn.Hide()
         row.AddStretchSpacer()
-        row.Add(self.leave_btn, 0, wx.ALL, 8)
+        row.Add(self.leave_btn, 0, wx.ALL, 6)
         panel.SetSizer(row)
         return panel
 
@@ -332,12 +323,12 @@ class CallFrame(wx.Frame):
         self.Bind(wx.EVT_CLOSE, lambda e: self._shutdown())
 
     def _refresh_control_styles(self):
-        ui_theme.style_button(self.copy_code_btn, "secondary", min_height=40)
-        ui_theme.style_button(self.mic_btn, "warning" if self.is_muted else "secondary", min_height=46, min_width=138)
-        ui_theme.style_button(self.cam_btn, "warning" if self.is_camera_off else "secondary", min_height=46, min_width=154)
+        ui_theme.style_button(self.copy_code_btn, "secondary",    min_height=40)
+        ui_theme.style_button(self.mic_btn,  "call_active" if self.is_muted      else "call", min_height=38, min_width=110)
+        ui_theme.style_button(self.cam_btn,  "call_active" if self.is_camera_off else "call", min_height=38, min_width=118)
         if self.is_host:
-            ui_theme.style_button(self.kick_btn, "warning", min_height=46, min_width=132)
-        ui_theme.style_button(self.leave_btn, "danger", min_height=46, min_width=128)
+            ui_theme.style_button(self.kick_btn, "call", min_height=38, min_width=110)
+        ui_theme.style_button(self.leave_btn, "call_danger", min_height=38, min_width=100)
 
     def _run_call(self):
         try:
@@ -485,9 +476,9 @@ class CallFrame(wx.Frame):
         else:
             try:
                 if self.is_camera_off:
-                    cam.start(); self.cam_btn.SetLabel("Stop Camera"); self.is_camera_off = False
+                    cam.start(); self.cam_btn.SetLabel("Camera Off"); self.is_camera_off = False
                 else:
-                    cam.stop();  self.cam_btn.SetLabel("Start Camera"); self.is_camera_off = True
+                    cam.stop();  self.cam_btn.SetLabel("Camera On");  self.is_camera_off = True
                     self.last_self_frame = None; self.video_panels[0].set_black()
                 self._refresh_control_styles()
             except Exception as e:

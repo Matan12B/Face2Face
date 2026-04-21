@@ -22,10 +22,15 @@ PALETTE = {
     "danger_dark": wx.Colour(177, 40, 35),
     "danger_bg": wx.Colour(255, 234, 231),
     "danger_text": wx.Colour(155, 34, 28),
-    "call_bg": wx.Colour(10, 16, 28),
-    "call_surface": wx.Colour(18, 27, 46),
-    "call_surface_alt": wx.Colour(26, 37, 61),
-    "video_tile": wx.Colour(20, 24, 34),
+    "call_bg": wx.Colour(0, 0, 0),
+    "call_surface": wx.Colour(12, 12, 14),
+    "call_surface_alt": wx.Colour(22, 22, 26),
+    "video_tile": wx.Colour(14, 14, 17),
+    # ── in-call control bar buttons ──
+    "call_ctrl":        wx.Colour(38, 40, 50),
+    "call_ctrl_text":   wx.Colour(210, 215, 228),
+    "call_ctrl_active": wx.Colour(180, 35, 35),    # mic-muted / cam-off
+    "call_ctrl_danger": wx.Colour(160, 30, 30),    # leave button
 }
 
 
@@ -204,12 +209,16 @@ def create_button(parent, label, kind="primary", min_height=44, min_width=-1):
 
 def style_button(button, kind="primary", min_height=44, min_width=-1):
     palettes = {
-        "primary": (PALETTE["primary"], PALETTE["text_inverted"]),
-        "secondary": (PALETTE["surface_alt"], PALETTE["text"]),
-        "ghost": (PALETTE["surface_muted"], PALETTE["text"]),
-        "warning": (PALETTE["warning_bg"], PALETTE["warning_text"]),
-        "danger": (PALETTE["danger"], PALETTE["text_inverted"]),
-        "danger_soft": (PALETTE["danger_bg"], PALETTE["danger_text"]),
+        "primary":      (PALETTE["primary"],        PALETTE["text_inverted"]),
+        "secondary":    (PALETTE["surface_alt"],    PALETTE["text"]),
+        "ghost":        (PALETTE["surface_muted"],  PALETTE["text"]),
+        "warning":      (PALETTE["warning_bg"],     PALETTE["warning_text"]),
+        "danger":       (PALETTE["danger"],         PALETTE["text_inverted"]),
+        "danger_soft":  (PALETTE["danger_bg"],      PALETTE["danger_text"]),
+        # ── in-call dark buttons ──
+        "call":         (PALETTE["call_ctrl"],      PALETTE["call_ctrl_text"]),
+        "call_active":  (PALETTE["call_ctrl_active"],PALETTE["text_inverted"]),
+        "call_danger":  (PALETTE["call_ctrl_danger"],PALETTE["text_inverted"]),
     }
     bg, fg = palettes.get(kind, palettes["primary"])
     button.SetMinSize(wx.Size(min_width, min_height))

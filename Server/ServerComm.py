@@ -105,6 +105,8 @@ class ServerComm:
     def close_client(self, client_ip):
         """
         Safely disconnects a client and removes them from tracking dictionaries.
+        Notifies serverLogic via recvQ with a "dc" (disconnect) message so that
+        meetings owned by this client are properly cleaned up.
         Note: use .pop() instead of del to prevent thread-safety errors
         (KeyErrors) if multiple threads try to close the same client at once.
         :param client_ip: The IP address of the client to disconnect.
@@ -117,6 +119,8 @@ class ServerComm:
                 self.open_clients.pop(client_ip, None)
                 client_soc.close()
                 print(f"Client {client_ip} closed.")
+                # Notify serverLogic so it can tear down any meeting this client owned
+                self.recvQ.put([client_ip, "dc^#^"])
         except Exception as e:
             print(f"Error closing client {client_ip}: {e}")
 
