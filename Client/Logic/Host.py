@@ -2,16 +2,9 @@ import threading
 import time
 import cv2
 import queue
-
-from Client.Devices.Camera import CameraControl
-from Client.Devices.Microphone import Microphone
-from Client.Devices.AudioOutputDevice import AudioOutput
-from Client.Comms.videoComm import VideoComm
 from Client.Comms.audioComm import AudioServer
 from Client.Protocol import clientProtocol
 from Client.Comms.ClientServerComm import ClientServer
-from Common.Cipher import AESCipher
-from Client.Logic.av_sync import AVSyncManager
 from Client.Logic.callParticipant import CallParticipant
 
 
@@ -98,17 +91,13 @@ class Host(CallParticipant):
                         audio_bytes, timestamp, sender_ip = self.audio_comm.audio_queue.get_nowait()
                     except queue.Empty:
                         break
-
                     self.av_sync.add_audio(sender_ip, float(timestamp), audio_bytes)
-
                     try:
                         msg = clientProtocol.build_audio_msg(float(timestamp), audio_bytes, sender_ip)
                         self.audio_comm.broadcast_audio(msg, sender_ip)
                     except Exception as e:
                         print("audio relay error:", e)
-
                 time.sleep(0.001)
-
             except Exception as e:
                 print("receive_audio_loop error:", e)
                 time.sleep(0.01)
@@ -121,7 +110,7 @@ class Host(CallParticipant):
         """
         while self.running:
             try:
-                if not self.mic.running or self.meeting_start_time is None:
+                if self.mic is None or not self.mic.running or self.meeting_start_time is None:
                     time.sleep(0.01)
                     continue
 
@@ -196,20 +185,19 @@ class Host(CallParticipant):
         """
         if client_ip not in self.open_clients:
             print(f"Cannot kick {client_ip}: not in open_clients")
-            return
+        else:
+            # Send force-disconnect to the kicked guest
+            try:
+                kick_msg = clientProtocol.build_kick_msg()
+                self.host_server.send_msg(client_ip, kick_msg)
+            except Exception as e:
+                print(f"kick send error to {client_ip}: {e}")
 
-        # Send force-disconnect to the kicked guest
-        try:
-            kick_msg = clientProtocol.build_kick_msg()
-            self.host_server.send_msg(client_ip, kick_msg)
-        except Exception as e:
-            print(f"kick send error to {client_ip}: {e}")
+            # Small delay so the message has time to arrive before we tear down their socket
+            time.sleep(0.1)
 
-        # Small delay so the message has time to arrive before we tear down their socket
-        time.sleep(0.1)
-
-        # Reuse the existing disconnect handler to clean up everything
-        self.handle_disconnect([client_ip])
+            # Reuse the existing disconnect handler to clean up everything
+            self.handle_disconnect([client_ip])
 
     def handle_disconnect(self, data):
         """
@@ -268,31 +256,29 @@ class Host(CallParticipant):
         port = int(data[1])
         client_username = data[3]
 
-        if ip == self.ip:
-            return
+        if ip != self.ip:
+            if ip not in self.open_clients:
+                self.open_clients[ip] = [None, port, client_username]
+            else:
+                existing_socket = self.open_clients[ip][0] if isinstance(self.open_clients[ip], list) else None
+                self.open_clients[ip] = [existing_socket, port, client_username]
 
-        if ip not in self.open_clients:
-            self.open_clients[ip] = [None, port, client_username]
-        else:
-            existing_socket = self.open_clients[ip][0] if isinstance(self.open_clients[ip], list) else None
-            self.open_clients[ip] = [existing_socket, port, client_username]
+            time.sleep(0.1)
 
-        time.sleep(0.1)
-
-        # Wait until ClientServer assigns the TCP socket (or client disconnects)
-        deadline = time.time() + 5.0
-        while self.running and time.time() < deadline:
-            try:
-                if ip not in self.open_clients or self.open_clients[ip][0] is not None:
+            # Wait until ClientServer assigns the TCP socket (or client disconnects)
+            deadline = time.time() + 5.0
+            while self.running and time.time() < deadline:
+                try:
+                    if ip not in self.open_clients or self.open_clients[ip][0] is not None:
+                        break
+                except (KeyError, IndexError, TypeError):
                     break
-            except (KeyError, IndexError, TypeError):
-                break
-            time.sleep(0.01)
+                time.sleep(0.01)
 
-        if self.running and ip in self.open_clients:
-            self.send_meeting_start_time(ip)
-            self.send_username(ip, self.username)
-            self.send_connected_clients(ip)
+            if self.running and ip in self.open_clients:
+                self.send_meeting_start_time(ip)
+                self.send_username(ip, self.username)
+                self.send_connected_clients(ip)
 
     def send_meeting_start_time(self, ip):
         """
@@ -356,23 +342,22 @@ class Host(CallParticipant):
         End the meeting: disconnect all guest P2P links. If remote_end is False, notify
         guests (fd) and the signaling server; the main server TCP session is never closed here.
         """
-        if not self.running:
-            return
-        if not remote_end:
-            try:
-                kick_msg = clientProtocol.build_kick_msg()
-                for ip in list(self.open_clients.keys()):
-                    try:
-                        self.host_server.send_msg(ip, kick_msg)
-                    except Exception:
-                        pass
-                time.sleep(0.15)
-            except Exception as e:
-                print("kick broadcast error:", e)
-            try:
-                if self.meeting_code:
-                    self.comm.send_msg(clientProtocol.build_leave_meeting(self.meeting_code))
-            except Exception as e:
-                print("leave server error:", e)
-        super().close()
+        if self.running:
+            if not remote_end:
+                try:
+                    kick_msg = clientProtocol.build_kick_msg()
+                    for ip in list(self.open_clients.keys()):
+                        try:
+                            self.host_server.send_msg(ip, kick_msg)
+                        except Exception:
+                            pass
+                    time.sleep(0.15)
+                except Exception as e:
+                    print("kick broadcast error:", e)
+                try:
+                    if self.meeting_code:
+                        self.comm.send_msg(clientProtocol.build_leave_meeting(self.meeting_code))
+                except Exception as e:
+                    print("leave server error:", e)
+            super().close()
 

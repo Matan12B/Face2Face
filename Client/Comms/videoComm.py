@@ -88,29 +88,28 @@ class VideoComm:
         :param timestamp:
         :return:
         """
-        if not frame_bytes:
-            return
-        try:
-            frame_id = self._next_frame_id()
-            packets = frameAssembler.FrameReassembler.split_frame_to_packets(frame_id, timestamp, frame_bytes)
-        except Exception as e:
-            print("split frame error:", e)
-            return
-        clients = [ip for ip in list(self.open_clients.keys()) if ip]
-        if not clients:
-            return
-        # Encrypt once per packet, broadcast same bytes to every client
-        for packet in packets:
+        if frame_bytes:
             try:
-                encrypted_packet = self.AES.encrypt_file(packet)
+                frame_id = self._next_frame_id()
+                packets = frameAssembler.FrameReassembler.split_frame_to_packets(frame_id, timestamp, frame_bytes)
             except Exception as e:
-                print("encrypt packet error:", e)
-                return
-            for ip in clients:
-                try:
-                    self.udp_socket.sendto(encrypted_packet, (ip, self.port))
-                except Exception as e:
-                    print(f"send frame error to {ip}:", e)
+                print("split frame error:", e)
+                packets = None
+            if packets is not None:
+                clients = [ip for ip in list(self.open_clients.keys()) if ip]
+                if clients:
+                    # Encrypt once per packet, broadcast same bytes to every client
+                    for packet in packets:
+                        try:
+                            encrypted_packet = self.AES.encrypt_file(packet)
+                        except Exception as e:
+                            print("encrypt packet error:", e)
+                            break
+                        for ip in clients:
+                            try:
+                                self.udp_socket.sendto(encrypted_packet, (ip, self.port))
+                            except Exception as e:
+                                print(f"send frame error to {ip}:", e)
 
     def remove_user(self, user_ip, user_port):
         """

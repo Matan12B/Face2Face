@@ -152,25 +152,22 @@ class RoundedButton(wx.Control):
             return
 
         bg, fg, border = self._current_colours()
-        rect = wx.Rect(0, 0, width - 1, height - 1)
 
-        dc.SetPen(wx.Pen(border, 1))
-        dc.SetBrush(wx.Brush(bg))
-        dc.DrawRoundedRectangle(rect, self._radius)
+        gc = wx.GraphicsContext.Create(dc)
+        if gc:
+            gc.SetAntialiasMode(wx.ANTIALIAS_DEFAULT)
+            path = gc.CreatePath()
+            path.AddRoundedRectangle(0, 0, width - 1, height - 1, self._radius)
 
-        if self.HasFocus() and self.IsEnabled():
-            focus_pen = wx.Pen(_blend_colour(PALETTE["primary"], wx.Colour(255, 255, 255), 0.25), 1)
-            focus_pen.SetStyle(wx.PENSTYLE_DOT)
-            dc.SetPen(focus_pen)
-            dc.SetBrush(wx.TRANSPARENT_BRUSH)
-            focus_rect = wx.Rect(4, 4, max(1, width - 9), max(1, height - 9))
-            dc.DrawRoundedRectangle(focus_rect, max(6, self._radius - 5))
+            gc.SetPen(gc.CreatePen(wx.Pen(border, 1)))
+            gc.SetBrush(gc.CreateBrush(wx.Brush(bg)))
+            gc.DrawPath(path)
 
-        dc.SetFont(self.GetFont())
-        dc.SetTextForeground(fg)
-        text = self.GetLabel() or ""
-        text_w, text_h = dc.GetTextExtent(text)
-        dc.DrawText(text, (width - text_w) // 2, (height - text_h) // 2)
+
+            gc.SetFont(self.GetFont(), fg)
+            text = self.GetLabel() or ""
+            text_w, text_h = gc.GetTextExtent(text)
+            gc.DrawText(text, (width - text_w) / 2, (height - text_h) / 2)
 
 
 def style_window(window, bg, fg=None):

@@ -8,16 +8,14 @@ from Client.GUI import ui_theme
 
 
 class _BaseAuthFrame(wx.Frame):
-    def __init__(self, client, title_suffix, heading, helper_text, submit_label):
-        super().__init__(None, title=f"Python Zoom - {title_suffix}", size=wx.Size(1080, 700))
+    def __init__(self, client, title_suffix, submit_label):
+        super().__init__(None, title=f"Python Zoom - {title_suffix}", size=wx.Size(540, 480))
 
         self.client = client
-        self.heading = heading
-        self.helper_text_value = helper_text
         self.submit_label = submit_label
         self._auth_wait_deadline = 0.0
 
-        self.SetMinSize(wx.Size(980, 640))
+        self.SetMinSize(wx.Size(440, 420))
         self._build_ui()
         self._bind_common_events()
         self.Center()
@@ -27,74 +25,19 @@ class _BaseAuthFrame(wx.Frame):
         ui_theme.style_window(self, ui_theme.PALETTE["app_bg"])
         ui_theme.style_window(root, ui_theme.PALETTE["app_bg"])
 
-        outer = wx.BoxSizer(wx.HORIZONTAL)
+        outer = wx.BoxSizer(wx.VERTICAL)
+        outer.AddStretchSpacer()
 
-        brand_panel = wx.Panel(root, size=wx.Size(340, -1))
-        ui_theme.style_window(brand_panel, ui_theme.PALETTE["sidebar"], ui_theme.PALETTE["text_inverted"])
-        brand_sizer = wx.BoxSizer(wx.VERTICAL)
+        title = wx.StaticText(root, label="Face2Face")
+        ui_theme.style_text(title, ui_theme.PALETTE["primary"], size_delta=14, bold=True)
+        outer.Add(title, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.BOTTOM, 18)
 
-        badge = wx.StaticText(brand_panel, label="PYTHON ZOOM")
-        ui_theme.style_text(badge, ui_theme.PALETTE["surface_alt"], size_delta=6, bold=True)
-
-        title = wx.StaticText(brand_panel, label="Meet, join, and share\nwithout the hassle.")
-        ui_theme.style_text(title, ui_theme.PALETTE["text_inverted"], size_delta=8, bold=True)
-
-        copy = wx.StaticText(
-            brand_panel,
-            label=(
-                "Sign in to start a meeting in seconds, join with a room code, "
-                "and stay connected from one simple desktop workspace."
-            )
-        )
-        ui_theme.style_text(copy, ui_theme.PALETTE["surface_alt"], size_delta=1)
-        copy.Wrap(290)
-
-        highlights_title = wx.StaticText(brand_panel, label="Why use it")
-        ui_theme.style_text(highlights_title, ui_theme.PALETTE["text_inverted"], size_delta=3, bold=True)
-
-        highlights = [
-            "Start your own room and share the meeting code instantly",
-            "Join another meeting quickly with a single invite code",
-            "Keep video, audio, and account access in one focused app",
-        ]
-
-        brand_sizer.AddSpacer(60)
-        brand_sizer.Add(badge, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 34)
-        brand_sizer.Add(title, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 18)
-        brand_sizer.Add(copy, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 34)
-        brand_sizer.Add(highlights_title, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 18)
-
-        for line in highlights:
-            item = wx.StaticText(brand_panel, label=line)
-            ui_theme.style_text(item, ui_theme.PALETTE["surface_alt"], size_delta=1)
-            item.Wrap(290)
-            brand_sizer.Add(item, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, 22)
-
-        brand_panel.SetSizer(brand_sizer)
-
-        content_wrap = wx.BoxSizer(wx.VERTICAL)
-        content_wrap.AddStretchSpacer()
-
-        shell = wx.Panel(root)
-        ui_theme.style_window(shell, ui_theme.PALETTE["app_bg"])
-        shell_sizer = wx.BoxSizer(wx.VERTICAL)
-
-        mini_badge = wx.StaticText(shell, label="SECURE ACCESS")
-        ui_theme.style_text(mini_badge, ui_theme.PALETTE["primary"], size_delta=1, bold=True)
-
-        shell_title = wx.StaticText(shell, label=self.heading)
-        ui_theme.style_text(shell_title, ui_theme.PALETTE["text"], size_delta=11, bold=True)
-
-        shell_copy = wx.StaticText(shell, label=self.helper_text_value)
-        ui_theme.style_text(shell_copy, ui_theme.PALETTE["text_muted"], size_delta=1)
-        shell_copy.Wrap(450)
-
-        auth_card = wx.Panel(shell)
+        auth_card = wx.Panel(root)
         ui_theme.style_window(auth_card, ui_theme.PALETTE["surface"])
-        auth_card.SetMinSize(wx.Size(480, -1))
-        auth_card.SetMaxSize(wx.Size(480, -1))
+        auth_card.SetMinSize(wx.Size(420, -1))
+        auth_card.SetMaxSize(wx.Size(420, -1))
         auth_sizer = wx.BoxSizer(wx.VERTICAL)
-        field_margin = 28
+        margin = 24
 
         username_label = wx.StaticText(auth_card, label="Username")
         password_label = wx.StaticText(auth_card, label="Password")
@@ -106,51 +49,29 @@ class _BaseAuthFrame(wx.Frame):
         ui_theme.style_text_input(self.username_box, "Enter your username")
         ui_theme.style_text_input(self.password_box, "Enter your password")
 
-        self.submit_btn = ui_theme.create_button(
-            auth_card,
-            self.submit_label,
-            kind="primary",
-            min_height=48,
-        )
+        self.submit_btn = ui_theme.create_button(auth_card, self.submit_label, kind="primary", min_height=48)
 
         self.status_panel = wx.Panel(auth_card)
         self.status_text = wx.StaticText(self.status_panel, label="")
         status_sizer = wx.BoxSizer(wx.VERTICAL)
-        status_sizer.Add(self.status_text, 0, wx.ALL | wx.EXPAND, 12)
+        status_sizer.Add(self.status_text, 0, wx.ALL | wx.EXPAND, 10)
         self.status_panel.SetSizer(status_sizer)
 
-        footer_hint = wx.StaticText(
-            auth_card,
-            label="Usernames can be up to 15 characters. Passwords can be up to 10 characters."
-        )
-        ui_theme.style_text(footer_hint, ui_theme.PALETTE["text_muted"])
-        footer_hint.Wrap(420)
+        fields = wx.BoxSizer(wx.VERTICAL)
+        fields.Add(username_label, 0, wx.BOTTOM, 6)
+        fields.Add(self.username_box, 0, wx.EXPAND | wx.BOTTOM, 14)
+        fields.Add(password_label, 0, wx.BOTTOM, 6)
+        fields.Add(self.password_box, 0, wx.EXPAND | wx.BOTTOM, 18)
 
-        field_sizer = wx.BoxSizer(wx.VERTICAL)
-        field_sizer.Add(username_label, 0, wx.BOTTOM, 6)
-        field_sizer.Add(self.username_box, 0, wx.EXPAND | wx.BOTTOM, 14)
-        field_sizer.Add(password_label, 0, wx.BOTTOM, 6)
-        field_sizer.Add(self.password_box, 0, wx.EXPAND | wx.BOTTOM, 18)
-
-        auth_sizer.Add(field_sizer, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, field_margin)
+        auth_sizer.Add(fields, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.TOP, margin)
         self._add_extra_fields(auth_card, auth_sizer)
-        auth_sizer.Add(self.submit_btn, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, field_margin)
-        auth_sizer.Add(self.status_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, field_margin)
-        auth_sizer.Add(footer_hint, 0, wx.LEFT | wx.RIGHT | wx.BOTTOM, field_margin)
+        auth_sizer.Add(self.submit_btn, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, margin)
+        auth_sizer.Add(self.status_panel, 0, wx.EXPAND | wx.LEFT | wx.RIGHT | wx.BOTTOM, margin)
         self._add_footer_actions(auth_card, auth_sizer)
         auth_card.SetSizer(auth_sizer)
 
-        shell_sizer.Add(mini_badge, 0, wx.BOTTOM, 10)
-        shell_sizer.Add(shell_title, 0, wx.BOTTOM, 8)
-        shell_sizer.Add(shell_copy, 0, wx.BOTTOM, 28)
-        shell_sizer.Add(auth_card, 0, wx.ALIGN_LEFT)
-        shell.SetSizer(shell_sizer)
-
-        content_wrap.Add(shell, 0, wx.EXPAND | wx.LEFT | wx.RIGHT, 40)
-        content_wrap.AddStretchSpacer()
-
-        outer.Add(brand_panel, 0, wx.EXPAND | wx.ALL, 26)
-        outer.Add(content_wrap, 1, wx.EXPAND | wx.TOP | wx.BOTTOM | wx.RIGHT, 26)
+        outer.Add(auth_card, 0, wx.ALIGN_CENTER_HORIZONTAL | wx.LEFT | wx.RIGHT, 40)
+        outer.AddStretchSpacer()
         root.SetSizer(outer)
 
         self._set_status("Enter your details to continue.", "neutral")
@@ -184,20 +105,22 @@ class _BaseAuthFrame(wx.Frame):
     def validate_fields(self):
         username = self.username_box.GetValue().strip()
         password = self.password_box.GetValue().strip()
+        result = (username, password)
 
         if not username or not password:
             self._set_status("Username and password are required.", "error")
-            return None, None
-
-        if len(username) > 15:
+            result = (None, None)
+        elif not username.isascii() or not password.isascii():
+            self._set_status("Only English letters, numbers, and symbols are allowed.", "error")
+            result = (None, None)
+        elif len(username) > 15:
             self._set_status("Username must be up to 15 characters.", "error")
-            return None, None
-
-        if len(password) > 10:
+            result = (None, None)
+        elif len(password) > 10:
             self._set_status("Password must be up to 10 characters.", "error")
-            return None, None
+            result = (None, None)
 
-        return username, password
+        return result
 
     def open_home(self):
         home = HomeFrame(self.client)
@@ -211,8 +134,6 @@ class AuthFrame(_BaseAuthFrame):
         super().__init__(
             client=client,
             title_suffix="Log In",
-            heading="Welcome back",
-            helper_text="Log in first, then head into a cleaner create or join meeting dashboard.",
             submit_label="Log In",
         )
 
@@ -238,38 +159,33 @@ class AuthFrame(_BaseAuthFrame):
     def open_signup(self, event):
         if self.signup_frame and not self.signup_frame.IsBeingDeleted():
             self.signup_frame.Raise()
-            return
-
-        self.signup_frame = SignupFrame(self.client, login_frame=self)
-        self.signup_frame.Show()
-        self.Hide()
+        else:
+            self.signup_frame = SignupFrame(self.client, login_frame=self)
+            self.signup_frame.Show()
+            self.Hide()
 
     def on_submit(self, event):
         username, password = self.validate_fields()
         if username is None:
-            return
-
-        if not self.client.wait_signaling(15.0):
+            pass
+        elif not self.client.wait_signaling(15.0):
             err = getattr(self.client.comm, "error", "") or "timeout"
             self._set_status(f"Signaling server unavailable ({err}).", "error")
-            return
-
-        self._set_auth_controls_enabled(False)
-        self._auth_wait_deadline = time.time() + 30.0
-        self._set_status("Checking your login details...", "neutral")
-        self.client.log_in(username, password)
-        wx.CallLater(300, self.check_login_result)
+        else:
+            self._set_auth_controls_enabled(False)
+            self._auth_wait_deadline = time.time() + 30.0
+            self._set_status("Checking your login details...", "neutral")
+            self.client.log_in(username, password)
+            wx.CallLater(300, self.check_login_result)
 
     def check_login_result(self):
         if self.client.active is None:
             if time.time() > self._auth_wait_deadline:
                 self._set_status("No response from server. Check the connection and try again.", "error")
                 self._set_auth_controls_enabled(True)
-                return
-            wx.CallLater(200, self.check_login_result)
-            return
-
-        if self.client.active == "1":
+            else:
+                wx.CallLater(200, self.check_login_result)
+        elif self.client.active == "1":
             self._set_status("Login successful. Opening your dashboard...", "success")
             wx.CallLater(500, self.open_home)
         else:
@@ -283,8 +199,6 @@ class SignupFrame(_BaseAuthFrame):
         super().__init__(
             client=client,
             title_suffix="Sign Up",
-            heading="Create your account",
-            helper_text="Set up your account in a dedicated signup window, then go straight into the meeting dashboard.",
             submit_label="Create Account",
         )
         self.Bind(wx.EVT_CLOSE, self.on_close)
@@ -329,29 +243,25 @@ class SignupFrame(_BaseAuthFrame):
     def on_submit(self, event):
         username, password = self.validate_fields()
         if username is None:
-            return
-
-        if not self.client.wait_signaling(15.0):
+            pass
+        elif not self.client.wait_signaling(15.0):
             err = getattr(self.client.comm, "error", "") or "timeout"
             self._set_status(f"Signaling server unavailable ({err}).", "error")
-            return
-
-        self._set_auth_controls_enabled(False)
-        self._auth_wait_deadline = time.time() + 30.0
-        self._set_status("Creating your account...", "neutral")
-        self.client.sign_up(username, password)
-        wx.CallLater(300, self.check_signup_result)
+        else:
+            self._set_auth_controls_enabled(False)
+            self._auth_wait_deadline = time.time() + 30.0
+            self._set_status("Creating your account...", "neutral")
+            self.client.sign_up(username, password)
+            wx.CallLater(300, self.check_signup_result)
 
     def check_signup_result(self):
         if self.client.active is None:
             if time.time() > self._auth_wait_deadline:
                 self._set_status("No response from server. Check the connection and try again.", "error")
                 self._set_auth_controls_enabled(True)
-                return
-            wx.CallLater(200, self.check_signup_result)
-            return
-
-        if self.client.active == "1":
+            else:
+                wx.CallLater(200, self.check_signup_result)
+        elif self.client.active == "1":
             self._set_status("Account created. Opening your dashboard...", "success")
             self._release_login_frame()
             wx.CallLater(500, self.open_home)

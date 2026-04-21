@@ -59,11 +59,12 @@ class Microphone:
         data, _ = self.stream.read(self.chunk)  # numpy array
 
         if self.is_muted:
-            return b'\x00' * (data.size * 2)  # int16 = 2 bytes
+            result = b'\x00' * (data.size * 2)  # int16 = 2 bytes
+        else:
+            data = self._apply_volume(data)
+            result = data.tobytes()
 
-        data = self._apply_volume(data)
-
-        return data.tobytes()
+        return result
 
     def _apply_volume(self, data):
         # data is already a numpy array (int16)

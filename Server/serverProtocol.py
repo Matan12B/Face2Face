@@ -10,8 +10,10 @@ def unpack(msg):
     opcode = split[0]
     data = split[1:]
     if len(data) == 1:
-        return opcode, data[0]
-    return opcode, data
+        result = data[0]
+    else:
+        result = data
+    return opcode, result
 
 def build_login_status(status):
     """

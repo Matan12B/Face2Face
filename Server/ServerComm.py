@@ -28,16 +28,18 @@ class ServerComm:
         :return: The received bytes, or None if the connection was lost or an error occurred.
         """
         data = b""
-        while len(data) < size:
+        error = False
+        while len(data) < size and not error:
             try:
                 chunk = sock.recv(size - len(data))
             except Exception as e:
                 print(f"server recv error: {e}")
-                return None
-            if not chunk:
-                return None
-            data += chunk
-        return data
+                error = True
+            if not error and not chunk:
+                error = True
+            if not error:
+                data += chunk
+        return None if error else data
 
     def _mainLoop(self):
         """
