@@ -14,7 +14,6 @@ class Host(CallParticipant):
         """
         Initialize the host participant: shared devices via parent, plus
         the host-side TCP server and AudioServer for managing guests.
-
         :param port: TCP port for the host's ClientServer.
         :param meeting_key: Shared AES key for the meeting.
         :param comm: Communication channel to the central server.
@@ -41,6 +40,7 @@ class Host(CallParticipant):
             "hj": self.handle_join,
             "hd": self.handle_disconnect,
             "fd": self.on_meeting_closed_by_server,
+            "tm": self.handle_mic_status
         }
 
     def _default_client_entry(self, ip):
@@ -329,6 +329,51 @@ class Host(CallParticipant):
                 self.host_server.close()
         except Exception as e:
             print("host server close error:", e)
+
+    def handle_mic_status(self, data):
+        """
+        A guest changed their mic state.
+        Store it in open_clients and relay to all other guests.
+
+        :param data: [sender_ip, "1"|"0"]
+        """
+        try:
+            sender_ip = data[0]
+            muted = bool(int(data[1]))
+        except Exception as e:
+            print("handle_mic_status parse error:", e)
+            return
+
+        if sender_ip in self.open_clients:
+            entry = self.open_clients[sender_ip]
+            if isinstance(entry, list):
+                # extend entry to hold muted flag at index 3
+                while len(entry) < 4:
+                    entry.append(None)
+                entry[3] = muted
+            elif isinstance(entry, dict):
+                entry["muted"] = muted
+
+        # Relay to all other guests
+        try:
+            relay = clientProtocol.build_toggle_mic(sender_ip, muted)
+            for ip in list(self.open_clients.keys()):
+                if ip != sender_ip:
+                    self.host_server.send_msg(ip, relay)
+        except Exception as e:
+            print("mic_status relay error:", e)
+
+    def broadcast_mic_status(self, muted):
+        """
+        Host changed their own mic. Broadcast to all guests.
+
+        :param muted: bool
+        """
+        try:
+            msg = clientProtocol.build_toggle_mic(self.ip, muted)
+            self.host_server.broadcast(msg)
+        except Exception as e:
+            print("broadcast_mic_status error:", e)
 
     def on_meeting_closed_by_server(self, data=None):
         """

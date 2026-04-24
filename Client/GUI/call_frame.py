@@ -84,12 +84,10 @@ class VideoPanel(wx.Panel):
         self.label_text, self.label_muted = text, muted
         self.Refresh(False)
 
-    # ── painting ───────────────────────────────────────────────────
     def _on_paint(self, _event):
         dc = wx.AutoBufferedPaintDC(self)
         w, h = self.GetClientSize()
 
-        # 1) Background: live bitmap, black, or theme colour
         if self.current_bitmap:
             bw, bh = self.current_bitmap.GetWidth(), self.current_bitmap.GetHeight()
             bmp = self.current_bitmap
@@ -102,7 +100,6 @@ class VideoPanel(wx.Panel):
             dc.DrawRectangle(0, 0, w, h)
 
         if self.label_text:
-            # 2) Label — big + centred when camera is off, small bottom-left when live
             dc.SetTextForeground(wx.WHITE)
             cam_off = self.show_black and not self.current_bitmap
             self._draw_label(dc, w, h, big=cam_off)
@@ -113,32 +110,26 @@ class VideoPanel(wx.Panel):
         font.PointSize += (8 if big else 1)
         font.SetWeight(wx.FONTWEIGHT_BOLD)
         dc.SetFont(font)
-
         tw, th = dc.GetTextExtent(self.label_text)
-        icon_sz = (50 if big else 26) if self.label_muted else 0
-        icon_gap = (12 if big else 10) if self.label_muted else 0
+        icon_sz = int(th * 1.1) if self.label_muted else 0
+        icon_gap = 8 if self.label_muted else 0
         pad = 15 if big else 8
-
         box_w = tw + icon_sz + icon_gap + pad * 2
         box_h = max(th, icon_sz) + (20 if big else 10)
         if big:
             box_x, box_y = max(0, (w - box_w) // 2), max(0, (h - box_h) // 2)
         else:
             box_x, box_y = 8, h - box_h - 8
-
         dc.SetBrush(wx.Brush(wx.Colour(0, 0, 0, 180 if big else 170)))
         dc.SetPen(wx.Pen(wx.Colour(0, 0, 0, 180 if big else 170)))
         dc.DrawRoundedRectangle(box_x, box_y, box_w, box_h, 8 if big else 6)
-
         cx = box_x + pad
         if self.label_muted:
             iy = box_y + max(0, (box_h - icon_sz) // 2)
             self._draw_muted_icon(dc, cx, iy, icon_sz)
             cx += icon_sz + icon_gap
-
         dc.DrawText(self.label_text, cx, box_y + (box_h - th) // 2)
 
-    # ── muted icon (PNG with fallback to simple vector) ────────────
     def _draw_muted_icon(self, dc, x, y, size):
         bmp = self._load_muted_bmp(size)
         if bmp:
@@ -167,10 +158,7 @@ class VideoPanel(wx.Panel):
         self._muted_bmp_cache[size] = bmp
         return bmp
 
-
-# ===================================================================
 #  CallFrame — the full meeting window
-# ===================================================================
 class CallFrame(wx.Frame):
     """
     Main meeting window shown while the user is in a call.
@@ -200,24 +188,20 @@ class CallFrame(wx.Frame):
         self.username = username
         self.camera_width, self.camera_height = 478, 359
 
-        # Local state
         self.last_self_frame = None
         self.remote_frames = {}          # ip → last cv2 frame
         self.remote_frame_times = {}     # ip → time.time() of last frame
         self.is_closing = False
 
-        # Device availability flags from call_logic
         self.is_camera_off = getattr(call_logic, "no_camera", False)
         self.no_mic = getattr(call_logic, "no_mic", False)
         self.is_muted = True if self.no_mic else False
         self.is_host = hasattr(call_logic, "host_server")
 
-        # Sync mute state with mic object (if it exists)
         mic = getattr(call_logic, "mic", None)
         if mic and hasattr(mic, "is_muted"):
             self.is_muted = bool(mic.is_muted)
 
-        # ── build UI ──────────────────────────────────────────────
         self.SetMinSize((1024, 740))
         self.SetBackgroundColour(ui_theme.PALETTE["call_bg"])
         self.panel = wx.Panel(self)
@@ -232,26 +216,22 @@ class CallFrame(wx.Frame):
         self._refresh_control_styles()
         self._bind_events()
 
-        # Initialise panels: self → black, rest → empty
         self.video_panels[0].set_black()
         for vp in self.video_panels[1:]:
             vp.clear_panel()
 
-        # 24 fps refresh timer + start call in background thread
         self.timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self._on_timer, self.timer)
         self.timer.Start(1000 // 24)
         threading.Thread(target=self._run_call, daemon=True).start()
         self.Center()
 
-    # ── UI builder helpers ─────────────────────────────────────────
     def _build_header(self):
         """Header bar: meeting info on the left, code + copy button on the right."""
         panel = wx.Panel(self.panel)
         ui_theme.style_window(panel, ui_theme.PALETTE["call_surface"], ui_theme.PALETTE["text_inverted"])
         hsizer = wx.BoxSizer(wx.HORIZONTAL)
 
-        # Left side: title + role
         left = wx.BoxSizer(wx.VERTICAL)
         lbl = wx.StaticText(panel, label="LIVE MEETING")
         title = wx.StaticText(panel, label="Meeting room")
@@ -263,7 +243,6 @@ class CallFrame(wx.Frame):
         for widget, gap in [(lbl, 6), (title, 6), (self.meeting_meta_text, 0)]:
             left.Add(widget, 0, wx.BOTTOM, gap)
 
-        # Right side: meeting code + copy button
         code = getattr(self.call_logic, "meeting_code", "") or "N/A"
         self.meeting_code = code
         right = wx.BoxSizer(wx.VERTICAL)
@@ -340,7 +319,6 @@ class CallFrame(wx.Frame):
         wx.MessageBox(f"Could not connect: {msg}", "Connection Error", wx.OK | wx.ICON_ERROR)
         self._shutdown()
 
-    # ── 24-fps timer: pull frames & update panels ──────────────────
     def _on_timer(self, _event):
         if self.is_closing:
             pass
@@ -414,7 +392,6 @@ class CallFrame(wx.Frame):
         for vp in self.video_panels[idx:]:
             vp.clear_panel()
 
-    # ── helpers: remote client info ────────────────────────────────
     def _connected_remote_ips(self):
         """Return list of remote participant IPs (excludes self, keeps host)."""
         oc = getattr(self.call_logic, "open_clients", None)
@@ -462,10 +439,13 @@ class CallFrame(wx.Frame):
         else:
             try:
                 if self.is_muted:
-                    mic.unmute(); self.mic_btn.SetLabel("Mute Mic"); self.is_muted = False
+                    mic.unmute(); self.mic_btn.SetLabel("Mute");   self.is_muted = False
                 else:
-                    mic.mute();   self.mic_btn.SetLabel("Unmute Mic"); self.is_muted = True
+                    mic.mute();   self.mic_btn.SetLabel("Unmute"); self.is_muted = True
                 self._refresh_control_styles()
+                # Notify other participants of the new mute state
+                if hasattr(self.call_logic, "broadcast_mic_status"):
+                    self.call_logic.broadcast_mic_status(self.is_muted)
             except Exception as e:
                 print("toggle mic error:", e)
 
@@ -509,7 +489,6 @@ class CallFrame(wx.Frame):
         else:
             wx.MessageBox("Could not open clipboard.", "Meeting Code")
 
-    # ── shutdown & cleanup ─────────────────────────────────────────
     def _shutdown(self):
         """
         Graceful exit: stop timer → stop local devices → release UDP port →
