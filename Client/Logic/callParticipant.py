@@ -85,6 +85,9 @@ class CallParticipant:
         # Used to detect camera-off: if no frame arrives for >VIDEO_TIMEOUT seconds the
         # GUI shows a black placeholder instead of the frozen last frame.
         self.last_video_received_time = {}
+        # IPs whose camera is explicitly off (via "co" signal).
+        # GUI checks this to stay black even if stale UDP frames keep arriving.
+        self.remote_camera_off = set()
 
         try:
             self.camera = CameraControl(width=320, height=240, jpeg_quality=5)
@@ -227,6 +230,13 @@ class CallParticipant:
         if not is_on:
             # Setting to 0 makes (now - 0) >> VIDEO_TIMEOUT → active=False immediately
             self.last_video_received_time[ip] = 0
+            # Mark camera as explicitly off so stale buffered UDP frames can't
+            # flip active back to True before the buffer drains.
+            self.remote_camera_off.add(ip)
+        else:
+            # Camera is back on — remove the explicit-off mark so normal
+            # last_video_received_time timeout logic takes over again.
+            self.remote_camera_off.discard(ip)
 
     def _resolve_video_sender(self, addr):
         """
@@ -359,6 +369,7 @@ class CallParticipant:
         if ip in self.latest_remote_frames:
             del self.latest_remote_frames[ip]
         self.last_video_received_time.pop(ip, None)
+        self.remote_camera_off.discard(ip)
         self.av_sync.remove_sender(ip)
         try:
             self.video_comm.remove_user(ip, 0)

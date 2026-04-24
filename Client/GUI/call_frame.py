@@ -417,6 +417,7 @@ class CallFrame(wx.Frame):
             self.remote_frame_times.pop(ip, None)
 
         last_recv = getattr(self.call_logic, "last_video_received_time", {})
+        cam_off_set = getattr(self.call_logic, "remote_camera_off", set())
         now = time.monotonic()
         idx = 1
 
@@ -426,7 +427,11 @@ class CallFrame(wx.Frame):
             vp = self.video_panels[idx]
             vp.set_label(self._display_name(ip), muted=self._is_remote_muted(ip))
             frame = self.remote_frames.get(ip)
-            active = frame is not None and (now - last_recv.get(ip, 0)) <= self.VIDEO_TIMEOUT
+            active = (
+                frame is not None
+                and ip not in cam_off_set
+                and (now - last_recv.get(ip, 0)) <= self.VIDEO_TIMEOUT
+            )
             vp.set_frame(frame) if active else vp.set_black()
             idx += 1
 
