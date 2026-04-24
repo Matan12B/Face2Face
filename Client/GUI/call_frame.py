@@ -41,6 +41,7 @@ class VideoPanel(wx.Panel):
         self.SetBackgroundColour(ui_theme.PALETTE["video_tile"])
         self.Bind(wx.EVT_PAINT, self._on_paint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda e: None)  # flicker-free
+        self.Bind(wx.EVT_SIZE, self._on_size)               # full repaint on resize
 
     def set_frame(self, frame):
         """Show a live OpenCV BGR frame."""
@@ -84,9 +85,27 @@ class VideoPanel(wx.Panel):
         self.label_text, self.label_muted = text, muted
         self.Refresh(False)
 
+    def _on_size(self, event):
+        """Force a full-panel repaint whenever the panel is resized.
+
+        Without this, Windows only sends EVT_PAINT for the newly-exposed area
+        (clip region), leaving the old label ghost visible at its previous
+        position while the new label appears at the updated position.
+        """
+        w, h = event.GetSize()
+        if w > 0 and h > 0:
+            self.panel_width, self.panel_height = w, h
+        self.Refresh(False)   # invalidate entire client area
+        event.Skip()
+
     # ── painting ───────────────────────────────────────────────────
     def _on_paint(self, _event):
-        dc = wx.AutoBufferedPaintDC(self)
+        # wx.BufferedPaintDC always uses a software off-screen buffer and blits
+        # the ENTIRE panel contents to the screen in one shot, overwriting any
+        # stale OS-level content (including old label positions after a resize).
+        # wx.AutoBufferedPaintDC can delegate to the native DWM compositor on
+        # Windows, which only updates the clip region and leaves ghost artifacts.
+        dc = wx.BufferedPaintDC(self)
         w, h = self.GetClientSize()
 
         # 1) Background: live bitmap, black, or theme colour
