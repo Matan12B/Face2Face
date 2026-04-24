@@ -67,6 +67,10 @@ class CameraControl:
         Pause camera capture. Fully release if pause_only=False.
         """
         self.paused = True
+        # Clear the cached frame immediately so get_frame() returns None
+        # right away and the send loop stops transmitting stale data.
+        with self.lock:
+            self.last_frame = None
         if not pause_only:
             self.running = False
             try:

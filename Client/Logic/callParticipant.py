@@ -172,8 +172,8 @@ class CallParticipant:
         try:
             while self.running:
                 now = time.time()
-                # Sleep longer when camera hardware is absent or not yet started by user
-                if self.camera is None or self.no_camera or not self.camera.running:
+                # Sleep longer when camera hardware is absent, not yet started, or paused by user
+                if self.camera is None or self.no_camera or not self.camera.running or getattr(self.camera, 'paused', False):
                     time.sleep(0.02)
                     continue
                 frame = self.camera.get_frame()
