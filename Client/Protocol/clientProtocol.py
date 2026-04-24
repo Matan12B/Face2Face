@@ -64,6 +64,14 @@ def build_force_close_camera():
     Return a force close msg build in the protocol structure
     """
 
+def build_mute_state(ip, is_muted):
+    """
+    Broadcast local mute state to peers.
+    is_muted=True  → "1"  (participant is muted)
+    is_muted=False → "0"  (participant can be heard)
+    """
+    return f"ms^#^{ip}^#^{1 if is_muted else 0}"
+
 def build_mute_msg():
     """
     Return a mute msg build in the protocol structure

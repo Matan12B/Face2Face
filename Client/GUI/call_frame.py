@@ -226,7 +226,7 @@ class CallFrame(wx.Frame):
         self.is_closing = False
 
         # Device availability flags from call_logic
-        self.is_camera_off = getattr(call_logic, "no_camera", False)
+        self.is_camera_off = True   # camera always starts OFF; user enables explicitly
         self.no_mic = getattr(call_logic, "no_mic", False)
         self.is_muted = True if self.no_mic else False
         self.is_host = hasattr(call_logic, "host_server")
@@ -485,6 +485,12 @@ class CallFrame(wx.Frame):
                 else:
                     mic.mute();   self.mic_btn.SetLabel("Unmute Mic"); self.is_muted = True
                 self._refresh_control_styles()
+                # Notify all peers of the new mute state so their UI can update
+                # the muted icon on our video tile.
+                try:
+                    self.call_logic.toggle_mic(self.is_muted)
+                except Exception as e:
+                    print("toggle_mic error:", e)
             except Exception as e:
                 print("toggle mic error:", e)
 

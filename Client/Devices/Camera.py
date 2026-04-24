@@ -61,7 +61,6 @@ class CameraControl:
             self.capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
             self.capture_thread.start()
         self.paused = False
-        print("Camera started/resumed.")
 
     def stop(self, pause_only=True):
         """

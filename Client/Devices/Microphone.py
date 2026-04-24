@@ -56,7 +56,13 @@ class Microphone:
         if not self.running:
             raise RuntimeError("Microphone is not active.")
 
-        data, _ = self.stream.read(self.chunk)  # numpy array
+        try:
+            data, _ = self.stream.read(self.chunk)  # numpy array
+        except Exception as e:
+            # Stream is broken (e.g. no audio driver, device disconnected).
+            # Stop cleanly so callers can detect mic is no longer usable.
+            self.stop()
+            raise RuntimeError(f"Microphone stream read failed: {e}") from e
 
         if self.is_muted:
             result = b'\x00' * (data.size * 2)  # int16 = 2 bytes

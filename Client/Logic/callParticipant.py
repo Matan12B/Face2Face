@@ -150,15 +150,19 @@ class CallParticipant:
         Start the call: run pre-start hook, initialize devices, launch shared and
         subclass-specific background threads, then run the camera capture loop
         on the calling thread until the call ends.
+
+        Camera is NOT started here — the user must press "Camera On" in the UI.
+        Microphone IS started but stays muted (is_muted=True by default) until
+        the user presses "Unmute".
         """
         self._pre_start()
         print("Starting call...")
-        if self.camera is not None and not self.no_camera:
-            self.camera.start()
+        # Camera intentionally NOT started — user enables it explicitly via the UI.
         if self.mic is not None and not self.no_mic:
             try:
                 self.mic.start()
-                self.mic.unmute()
+                # Do NOT call unmute() here — mic starts muted by default so the
+                # UI mute indicator and the actual device state stay in sync.
             except Exception as e:
                 print(f"Mic start failed ({e}) – continuing without mic.")
                 self.no_mic = True
@@ -168,8 +172,9 @@ class CallParticipant:
         try:
             while self.running:
                 now = time.time()
-                if self.camera is None or self.no_camera:
-                    time.sleep(0.1)
+                # Sleep longer when camera hardware is absent or not yet started by user
+                if self.camera is None or self.no_camera or not self.camera.running:
+                    time.sleep(0.02)
                     continue
                 frame = self.camera.get_frame()
                 if frame is None:
@@ -192,6 +197,13 @@ class CallParticipant:
             print("start loop error:", e)
         finally:
             self.close()
+
+    def toggle_mic(self, is_muted):
+        """
+        Notify all peers of this participant's current mute state.
+        Overridden by Host and CallLogic with the appropriate transport.
+        """
+        pass
 
     def _resolve_video_sender(self, addr):
         """

@@ -39,8 +39,8 @@ class CallLogic(CallParticipant):
         self.host_ip = host_ip
         self.host_video_ip = None
         self.audio_comm = AudioClient(host_ip, self.AES, audio_port)
-        # host is always known from the start
-        self.open_clients[self.host_ip] = {"username": "Host"}
+        # host is always known from the start — start as muted until we hear otherwise
+        self.open_clients[self.host_ip] = {"username": "Host", "muted": True}
         self.send_queue = queue.Queue(maxsize=1)
         # some commands are in the parent class
         self.commands = {
@@ -52,6 +52,7 @@ class CallLogic(CallParticipant):
             "fd": self.force_disconnect,
             "gh": self.get_host_username,
             "cc": self.get_connected_clients,
+            "ms": self.handle_mute_state,
         }
     def _resolve_video_sender(self, addr):
         """
@@ -155,7 +156,11 @@ class CallLogic(CallParticipant):
         """
         Continuously record from the microphone and send audio to the host.
         Runs in a background daemon thread.
+        Stops itself after too many consecutive errors (mirrors host_audio_send_loop).
         """
+        _MAX_CONSECUTIVE_ERRORS = 5
+        _consecutive_errors = 0
+
         while self.running:
             try:
                 if self.mic is None or not self.mic.running or self.meeting_start_time is None:
@@ -166,13 +171,31 @@ class CallLogic(CallParticipant):
                 if not audio_chunk:
                     continue
 
+                _consecutive_errors = 0
+
                 timestamp = time.time() - self.meeting_start_time
                 msg = clientProtocol.build_audio_msg(timestamp, audio_chunk, self.ip)
                 self.audio_comm.send_audio(msg)
 
             except Exception as e:
-                print("audio_send_loop error:", e)
-                time.sleep(0.02)
+                _consecutive_errors += 1
+                print(f"audio_send_loop error: {e}")
+
+                if _consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                    print(
+                        "audio_send_loop: too many consecutive errors — "
+                        "microphone disabled for this session."
+                    )
+                    try:
+                        if self.mic:
+                            self.mic.stop()
+                    except Exception:
+                        pass
+                    self.mic = None
+                    self.no_mic = True
+                    break
+
+                time.sleep(min(0.1 * (2 ** (_consecutive_errors - 1)), 2.0))
 
     def receive_audio_loop(self):
         """
@@ -267,6 +290,8 @@ class CallLogic(CallParticipant):
         if self.host_ip not in self.open_clients:
             self.open_clients[self.host_ip] = {}
         self.open_clients[self.host_ip]["username"] = username
+        # preserve existing muted state (default True if not yet set)
+        self.open_clients[self.host_ip].setdefault("muted", True)
 
     def get_connected_clients(self, connected_clients):
         """
@@ -277,7 +302,8 @@ class CallLogic(CallParticipant):
         if isinstance(connected_clients, dict):
             for ip, username in connected_clients.items():
                 if ip != self.ip and ip != self.host_ip:
-                    self.open_clients[ip] = {"username": username}
+                    # Everyone starts as muted until they broadcast otherwise
+                    self.open_clients[ip] = {"username": username, "muted": True}
 
     def handle_video_msg(self, data):
         """
@@ -321,7 +347,35 @@ class CallLogic(CallParticipant):
             return
 
         if ip != self.ip:
-            self.open_clients[ip] = {"username": username}
+            # New participants start as muted until they announce otherwise
+            self.open_clients[ip] = {"username": username, "muted": True}
+
+    def handle_mute_state(self, data):
+        """
+        Update the mute state of a remote participant.
+
+        :param data: List [ip, "1"|"0"]  (1=muted, 0=unmuted).
+        """
+        try:
+            ip = self._canonical_sender_ip(data[0])
+            is_muted = bool(int(data[1]))
+            if ip in self.open_clients:
+                if isinstance(self.open_clients[ip], dict):
+                    self.open_clients[ip]["muted"] = is_muted
+        except Exception as e:
+            print("handle_mute_state error:", e)
+
+    def toggle_mic(self, is_muted):
+        """
+        Send our current mute state to the host so it can relay it to all peers.
+
+        :param is_muted: True if we are now muted, False if unmuted.
+        """
+        try:
+            msg = clientProtocol.build_mute_state(self.ip, is_muted)
+            self.comm_with_host.send_msg(msg)
+        except Exception as e:
+            print("toggle_mic error:", e)
 
     def force_disconnect(self, data=None):
         """
