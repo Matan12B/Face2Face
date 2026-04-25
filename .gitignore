@@ -16,7 +16,7 @@ __pycache__/
 .vscode/
 
 # Personal notes / docs
-*.md
+# *.md
 
 # Build / temporary files
 *.log
