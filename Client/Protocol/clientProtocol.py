@@ -59,11 +59,6 @@ def build_enter_meeting(meeting_code, username):
     """
     return f"jm^#^{meeting_code}^#^{username}"
 
-def build_force_close_camera():
-    """
-    Return a force close msg build in the protocol structure
-    """
-
 def build_mute_state(ip, is_muted):
     """
     Broadcast local mute state to peers.
@@ -72,16 +67,10 @@ def build_mute_state(ip, is_muted):
     """
     return f"ms^#^{ip}^#^{1 if is_muted else 0}"
 
-def build_mute_msg():
-    """
-    Return a mute msg build in the protocol structure
-    """
-
 def build_kick_msg():
     """
     Return a kick msg build in the protocol structure
     """
-
     return f"fd^#^"
 
 def build_video_msg(timestamp, frame):
@@ -109,7 +98,7 @@ def build_camera_state(ip, is_on):
     is_on=True → "1"  (camera is now on)
     is_on=False → "0" (camera is now off)
     """
-    return f"co^#^{ip}^#^{1 if is_on else 0}"
+    return f"cs^#^{ip}^#^{1 if is_on else 0}"
 
 def build_toggle_mic(ip, muted):
     """
@@ -117,11 +106,6 @@ def build_toggle_mic(ip, muted):
     muted: bool — True = muted, False = unmuted
     """
     return f"tm^#^{ip}^#^{1 if muted else 0}"
-
-def build_toggle_camera():
-    """
-    Return a register msg build in the protocol structure
-    """
 
 def build_leave_meeting(meeting_code):
     """
@@ -146,8 +130,3 @@ def build_meeting_start_time(meeting_start):
     build meeting start time to send to guests
     """
     return f"gmst^#^{meeting_start}"
-
-
-
-
-

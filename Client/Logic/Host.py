@@ -41,7 +41,7 @@ class Host(CallParticipant):
             "hd": self.handle_disconnect,
             "fd": self.on_meeting_closed_by_server,
             "tm": self.handle_mic_status,
-            "co": self.handle_camera_state,
+            "cs": self.handle_camera_state,
         }
 
     def _default_client_entry(self, ip):
@@ -177,7 +177,7 @@ class Host(CallParticipant):
                     data[0] = guest_ip
 
             # Same for camera-state messages
-            if opcode == "co":
+            if opcode == "cs":
                 if isinstance(data, list) and len(data) >= 1:
                     data[0] = guest_ip
 

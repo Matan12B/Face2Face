@@ -85,7 +85,7 @@ class CallParticipant:
         # Used to detect camera-off: if no frame arrives for >VIDEO_TIMEOUT seconds the
         # GUI shows a black placeholder instead of the frozen last frame.
         self.last_video_received_time = {}
-        # IPs whose camera is explicitly off (via "co" signal).
+        # IPs whose camera is explicitly off (via "cs" signal).
         # GUI checks this to stay black even if stale UDP frames keep arriving.
         self.remote_camera_off = set()
 

@@ -51,7 +51,7 @@ class CallLogic(CallParticipant):
             "gh": self.get_host_username,
             "cc": self.get_connected_clients,
             "tm": self.handle_mic_status,
-            "co": self.handle_camera_state,
+            "cs": self.handle_camera_state,
         }
 
     def _resolve_video_sender(self, addr):
