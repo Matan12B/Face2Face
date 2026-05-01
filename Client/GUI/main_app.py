@@ -13,7 +13,7 @@ from Client.Logic.clientLogic import Client
 from Common.settings import load_settings
 
 
-class ZoomApp(wx.App):
+class Face2FaceApp(wx.App):
     def OnInit(self):
         try:
             ip, port, video_port, audio_port, dh_p, dh_g = load_settings()
@@ -29,5 +29,5 @@ class ZoomApp(wx.App):
 
 
 if __name__ == "__main__":
-    app = ZoomApp()
+    app = Face2FaceApp()
     app.MainLoop()
